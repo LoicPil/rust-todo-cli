@@ -38,7 +38,7 @@ impl TodoList {
         if index < self.tasks.len() {
             self.tasks.remove(index);
         } else {
-            println!("Invalid task index!");
+            println!("Invalid task index");
         }
     }
 
@@ -46,13 +46,21 @@ impl TodoList {
         if let Some(task) = self.tasks.get_mut(index) {
             task.status = Status::Done;
         } else {
-            println!("Invalid task index!");
+            println!("Invalid task index");
+        }
+    }
+
+    fn set_in_progress(&mut self, index: usize) {
+        if let Some(task) = self.tasks.get_mut(index) {
+            task.status = Status::InProgress;
+        } else {
+            println!("Invalid task index");
         }
     }
 
     fn list_tasks(&self) {
         if self.tasks.is_empty() {
-            println!("No tasks.");
+            println!("No tasks");
             return;
         }
 
@@ -72,37 +80,46 @@ enum Command {
     Add(String),
     Done(usize),
     Remove(usize),
+    Progress(usize),
     List,
     Quit,
     Unknown,
 }
-
 fn parse_command(input: &str) -> Command {
     let mut parts = input.splitn(2, ' ');
+
     let command = parts.next().unwrap_or("");
     let argument = parts.next().unwrap_or("").trim();
 
     match command {
         "add" => Command::Add(argument.to_string()),
-        "done" => argument
-            .parse()
-            .map(Command::Done)
-            .unwrap_or(Command::Unknown),
-        "remove" => argument
-            .parse()
-            .map(Command::Remove)
-            .unwrap_or(Command::Unknown),
+
+        "done" => match argument.parse::<usize>() {
+            Ok(id) => Command::Done(id),
+            Err(_) => Command::Unknown,
+        },
+
+        "remove" => match argument.parse::<usize>() {
+            Ok(id) => Command::Remove(id),
+            Err(_) => Command::Unknown,
+        },
+
+        "progress" => match argument.parse::<usize>() {
+            Ok(id) => Command::Progress(id),
+            Err(_) => Command::Unknown,
+        },
+
         "list" => Command::List,
         "quit" => Command::Quit,
+
         _ => Command::Unknown,
     }
 }
-
 fn main() {
     let mut todo = TodoList::new();
 
     loop {
-        println!("Commands: add <desc> | done <id> | remove <id> | list | quit");
+        println!("Commands: add <desc> | done <id> | remove <id> | progress <id> | list | quit");
 
         let mut input = String::new();
         io::stdin()
@@ -113,11 +130,10 @@ fn main() {
             Command::Add(desc) => todo.add_task(desc),
             Command::Done(id) => todo.complete_task(id),
             Command::Remove(id) => todo.remove_task(id),
+            Command::Progress(id) => todo.set_in_progress(id),
             Command::List => todo.list_tasks(),
             Command::Quit => break,
-            Command::Unknown => println!("Unknown command!"),
+            Command::Unknown => println!("Unknown command"),
         }
-
-        println!("----------");
     }
 }
