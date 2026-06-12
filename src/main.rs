@@ -2,9 +2,9 @@ use std::io;
 
 #[derive(Clone, Copy)]
 enum Status {
-    Done,
     Todo,
     InProgress,
+    Done,
 }
 
 struct Task {
