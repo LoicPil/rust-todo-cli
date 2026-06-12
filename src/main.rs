@@ -1,15 +1,22 @@
 use std::io;
 
+#[derive(Clone, Copy)]
+enum Status {
+    Done,
+    Todo,
+    InProgress,
+}
+
 struct Task {
     description: String,
-    done: bool,
+    status: Status,
 }
 
 impl Task {
     fn new(description: String) -> Task {
         Task {
             description,
-            done: false,
+            status: Status::Todo,
         }
     }
 }
@@ -17,6 +24,7 @@ impl Task {
 struct TodoList {
     tasks: Vec<Task>,
 }
+
 impl TodoList {
     fn new() -> TodoList {
         TodoList { tasks: Vec::new() }
@@ -27,60 +35,105 @@ impl TodoList {
     }
 
     fn remove_task(&mut self, index: usize) {
-        self.tasks.remove(index);
+        if index < self.tasks.len() {
+            self.tasks.remove(index);
+        } else {
+            println!("Invalid task index");
+        }
     }
 
     fn complete_task(&mut self, index: usize) {
         if let Some(task) = self.tasks.get_mut(index) {
-            task.done = true;
+            task.status = Status::Done;
         } else {
-            println!("Invalid task include!")
+            println!("Invalid task index");
+        }
+    }
+
+    fn set_in_progress(&mut self, index: usize) {
+        if let Some(task) = self.tasks.get_mut(index) {
+            task.status = Status::InProgress;
+        } else {
+            println!("Invalid task index");
         }
     }
 
     fn list_tasks(&self) {
+        if self.tasks.is_empty() {
+            println!("No tasks");
+            return;
+        }
+
         for (i, task) in self.tasks.iter().enumerate() {
-            let status: &str = if task.done { "[X]" } else { "[ ]" };
-            println!("{}{}{}", i, status, task.description);
+            let status = match task.status {
+                Status::Done => "[X]",
+                Status::Todo => "[ ]",
+                Status::InProgress => "[~]",
+            };
+
+            println!("{} {} {}", i, status, task.description);
         }
     }
 }
 
+enum Command {
+    Add(String),
+    Done(usize),
+    Remove(usize),
+    Progress(usize),
+    List,
+    Quit,
+    Unknown,
+}
+fn parse_command(input: &str) -> Command {
+    let mut parts = input.splitn(2, ' ');
+
+    let command = parts.next().unwrap_or("");
+    let argument = parts.next().unwrap_or("").trim();
+
+    match command {
+        "add" => Command::Add(argument.to_string()),
+
+        "done" => match argument.parse::<usize>() {
+            Ok(id) => Command::Done(id),
+            Err(_) => Command::Unknown,
+        },
+
+        "remove" => match argument.parse::<usize>() {
+            Ok(id) => Command::Remove(id),
+            Err(_) => Command::Unknown,
+        },
+
+        "progress" => match argument.parse::<usize>() {
+            Ok(id) => Command::Progress(id),
+            Err(_) => Command::Unknown,
+        },
+
+        "list" => Command::List,
+        "quit" => Command::Quit,
+
+        _ => Command::Unknown,
+    }
+}
 fn main() {
     let mut todo = TodoList::new();
+
     loop {
-        println!("Commands: add <desc> | list | done <id> | remove <id> | quit");
+        println!("Commands: add <desc> | done <id> | remove <id> | progress <id> | list | quit");
+
         let mut input = String::new();
         io::stdin()
             .read_line(&mut input)
             .expect("Failed to read line");
-        let input = input.trim();
 
-        let mut parts = input.splitn(2, ' ');
-        let command = parts.next().unwrap_or("");
-        let argument = parts.next().unwrap_or("");
-
-        if command == "add" {
-            todo.add_task(String::from(argument));
-        } else if command == "list" {
-            todo.list_tasks();
-        } else if command == "done" {
-            match argument.parse::<usize>() {
-                Ok(index) => todo.complete_task(index),
-                Err(_) => println!("Please provide a valid number"),
-            }
-        } else if command == "remove" {
-            match argument.parse::<usize>() {
-                Ok(index) => todo.remove_task(index),
-                Err(_) => println!("Please provide a valid number"),
-            }
-        } else if command == "quit" {
-            break;
-        } else {
-            println!("Unknown command !")
+        match parse_command(input.trim()) {
+            Command::Add(desc) => todo.add_task(desc),
+            Command::Done(id) => todo.complete_task(id),
+            Command::Remove(id) => todo.remove_task(id),
+            Command::Progress(id) => todo.set_in_progress(id),
+            Command::List => todo.list_tasks(),
+            Command::Quit => break,
+            Command::Unknown => println!("Unknown command"),
         }
-        println!("----------");
-        todo.list_tasks();
-        println!("----------");
     }
 }
