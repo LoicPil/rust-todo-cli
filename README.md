@@ -1,13 +1,13 @@
 # Todo List (Rust learning project)
 
-A simple command-line to-do list application, built while learning Rust 
+A simple command-line to-do list application, built while learning Rust
 through "The Rust Programming Language" book (the "Rust Book").
 
 ## Status
 
-This is my first Rust project, currently implemented using concepts from 
-Chapters 1–5 (variables, ownership, structs, methods, basic collections, 
-and basic I/O). It will be progressively extended as I work through the 
+This is my first Rust project, currently implemented using concepts from
+Chapters 1–5 (variables, ownership, structs, methods, basic collections,
+and basic I/O). It will be progressively extended as I work through the
 rest of the book — see commit history for the evolution.
 
 ## Features (current)
@@ -25,6 +25,7 @@ cargo run
 ```
 
 Available commands:
+
 - `add <description>` — add a new task
 - `list` — show all tasks
 - `done <id>` — mark a task as done
@@ -33,8 +34,8 @@ Available commands:
 
 ## Roadmap
 
-- [ ] Replace boolean status with an enum (Todo / In Progress / Done)
-- [ ] Split code into modules
+- [x] Replace boolean status with an enum (Todo / In Progress / Done)
+- [x] Split code into modules
 - [ ] Custom error handling for invalid commands/indices
 - [ ] Persistent storage (save/load to a file)
 - [ ] Unit tests
