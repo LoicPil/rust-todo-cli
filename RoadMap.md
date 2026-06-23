@@ -33,10 +33,10 @@ like.
 
 ## Chapter 8 — Common Collections
 
-- [ ] Switch storage from `Vec<Task>` to `HashMap<u32, Task>` keyed by an
+- [X] Switch storage from `Vec<Task>` to `HashMap<u32, Task>` keyed by an
   auto-incrementing ID
-- [ ] Add `list_by_status(&self, status: Status)` filtering method
-- [ ] Update `Command::Done`/`Remove`/`Progress` to use the new ID type
+- [X] Add `list_by_status(&self, status: Status)` filtering method
+- [X] Update `Command::Done`/`Remove`/`Progress` to use the new ID type
 
 ## Chapter 9 — Error Handling
 

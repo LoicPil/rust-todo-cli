@@ -1,56 +1,85 @@
+use std::collections::HashMap;
+
 use crate::task::{Status, Task};
 
 pub struct TodoList {
-    tasks: Vec<Task>,
+    tasks: HashMap<u32, Task>,
+    next_id: u32,
 }
 
 impl TodoList {
     pub fn new() -> TodoList {
-        TodoList { tasks: Vec::new() }
+        TodoList {
+            tasks: HashMap::new(),
+            next_id: 1,
+        }
     }
 
     pub fn add_task(&mut self, description: String) {
-        self.tasks.push(Task::new(description));
+        let id = self.next_id;
+        self.tasks.insert(id, Task::new(description));
+        self.next_id += 1;
     }
 
-    pub fn remove_task(&mut self, index: usize) {
-        if index < self.tasks.len() {
-            self.tasks.remove(index);
+    pub fn remove_task(&mut self, index: u32) {
+        if self.tasks.remove(&index).is_some() {
         } else {
             println!("Invalid task index");
         }
     }
 
-    pub fn complete_task(&mut self, index: usize) {
-        if let Some(task) = self.tasks.get_mut(index) {
+    pub fn complete_task(&mut self, index: u32) {
+        if let Some(task) = self.tasks.get_mut(&index) {
             task.status = Status::Done;
         } else {
             println!("Invalid task index");
         }
     }
 
-    pub fn set_in_progress(&mut self, index: usize) {
-        if let Some(task) = self.tasks.get_mut(index) {
+    pub fn set_in_progress(&mut self, index: u32) {
+        if let Some(task) = self.tasks.get_mut(&index) {
             task.status = Status::InProgress;
         } else {
             println!("Invalid task index");
         }
     }
 
-    pub fn list_tasks(&self) {
+    pub fn list_tasks(&self) -> Vec<String> {
         if self.tasks.is_empty() {
-            println!("No tasks");
-            return;
+            return vec!["No tasks".to_string()];
         }
 
-        for (i, task) in self.tasks.iter().enumerate() {
-            let status = match task.status {
-                Status::Done => "[X]",
-                Status::Todo => "[ ]",
-                Status::InProgress => "[~]",
-            };
+        self.tasks
+            .iter()
+            .map(|(id, task)| {
+                let status_icon = match task.status {
+                    Status::Done => "[X]",
+                    Status::Todo => "[ ]",
+                    Status::InProgress => "[~]",
+                };
+                format!("{} {} {}", id, status_icon, task.description)
+            })
+            .collect()
+    }
 
-            println!("{} {} {}", i, status, task.description);
+    /// Retourne une liste de chaînes formatées filtrées par statut
+    pub fn list_by_status(&self, status: Status) -> Vec<String> {
+        self.tasks
+            .iter()
+            .filter(|(_, task)| task.status == status)
+            .map(|(id, task)| {
+                let status_icon = match task.status {
+                    Status::Done => "[X]",
+                    Status::Todo => "[ ]",
+                    Status::InProgress => "[~]",
+                };
+                format!("{} {} {}", id, status_icon, task.description)
+            })
+            .collect()
+    }
+    pub fn print_lines(lines: Vec<String>) {
+        for line in lines {
+            println!("{}", line);
         }
     }
 }
