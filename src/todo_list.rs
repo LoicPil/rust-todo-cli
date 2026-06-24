@@ -2,6 +2,10 @@ use std::collections::HashMap;
 
 use crate::task::{Status, Task};
 
+pub enum TodoError {
+    TaskNotFound(u32),
+}
+
 pub struct TodoList {
     tasks: HashMap<u32, Task>,
     next_id: u32,
@@ -21,27 +25,20 @@ impl TodoList {
         self.next_id += 1;
     }
 
-    pub fn remove_task(&mut self, index: u32) {
-        if self.tasks.remove(&index).is_some() {
-        } else {
-            println!("Invalid task index");
-        }
+    pub fn remove_task(&mut self, id: u32) -> Result<(), TodoError> {
+        self.tasks.remove(&id).ok_or(TodoError::TaskNotFound(id))?;
+        Ok(())
+    }
+    pub fn complete_task(&mut self, id: u32) -> Result<(), TodoError> {
+        let task = self.tasks.get_mut(&id).ok_or(TodoError::TaskNotFound(id))?;
+        task.status = Status::Done;
+        Ok(())
     }
 
-    pub fn complete_task(&mut self, index: u32) {
-        if let Some(task) = self.tasks.get_mut(&index) {
-            task.status = Status::Done;
-        } else {
-            println!("Invalid task index");
-        }
-    }
-
-    pub fn set_in_progress(&mut self, index: u32) {
-        if let Some(task) = self.tasks.get_mut(&index) {
-            task.status = Status::InProgress;
-        } else {
-            println!("Invalid task index");
-        }
+    pub fn set_in_progress(&mut self, id: u32) -> Result<(), TodoError> {
+        let task = self.tasks.get_mut(&id).ok_or(TodoError::TaskNotFound(id))?;
+        task.status = Status::InProgress;
+        Ok(())
     }
 
     pub fn list_tasks(&self) -> Vec<String> {
