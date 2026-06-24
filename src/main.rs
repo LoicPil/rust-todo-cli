@@ -2,6 +2,7 @@ mod task;
 mod todo_list;
 
 use crate::task::Status;
+use crate::todo_list::TodoError;
 use crate::todo_list::TodoList;
 use std::io;
 use std::io::Write;
@@ -24,29 +25,24 @@ fn parse_command(input: &str) -> Command {
 
     match command {
         "add" => Command::Add(argument.to_string()),
-
         "done" => match argument.parse::<u32>() {
             Ok(id) => Command::Done(id),
             Err(_) => Command::Unknown,
         },
-
         "remove" => match argument.parse::<u32>() {
             Ok(id) => Command::Remove(id),
             Err(_) => Command::Unknown,
         },
-
         "progress" => match argument.parse::<u32>() {
             Ok(id) => Command::Progress(id),
             Err(_) => Command::Unknown,
         },
-
         "filter" | "status" => match argument.to_lowercase().as_str() {
             "todo" => Command::Filter(Status::Todo),
             "done" => Command::Filter(Status::Done),
             "inprogress" | "progress" => Command::Filter(Status::InProgress),
             _ => Command::Unknown,
         },
-
         "list" => Command::List,
         "quit" => Command::Quit,
         _ => Command::Unknown,
@@ -63,7 +59,6 @@ fn main() {
             "\nCommands: add <desc> | done <id> | remove <id> | progress <id> | list | filter <todo|done|inprogress> | quit"
         );
         print!("> ");
-
         std::io::stdout().flush().unwrap();
 
         let mut input = String::new();
@@ -80,18 +75,25 @@ fn main() {
                     println!("Task added.");
                 }
             }
-            Command::Done(id) => todo.complete_task(id),
-            Command::Remove(id) => todo.remove_task(id),
-            Command::Progress(id) => todo.set_in_progress(id),
+            Command::Done(id) => match todo.complete_task(id) {
+                Ok(()) => println!("Task {} marked as done.", id),
+                Err(TodoError::TaskNotFound(id)) => println!("Error: task {} not found.", id),
+            },
+            Command::Remove(id) => match todo.remove_task(id) {
+                Ok(()) => println!("Task {} removed.", id),
+                Err(TodoError::TaskNotFound(id)) => println!("Error: task {} not found.", id),
+            },
+            Command::Progress(id) => match todo.set_in_progress(id) {
+                Ok(()) => println!("Task {} marked as in progress.", id),
+                Err(TodoError::TaskNotFound(id)) => println!("Error: task {} not found.", id),
+            },
             Command::List => {
                 let lines = todo.list_tasks();
                 TodoList::print_lines(lines);
             }
-
             Command::Filter(status) => {
                 let lines = todo.list_by_status(status);
                 if lines.is_empty() {
-                    // Note: Requires #[derive(Debug)] on Status
                     println!("No tasks found with status '{:?}'.", status);
                 } else {
                     TodoList::print_lines(lines);
