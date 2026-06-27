@@ -1,4 +1,7 @@
+use std::fmt;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+
 pub enum Status {
     Todo,
     InProgress,
@@ -16,5 +19,22 @@ impl Task {
             description,
             status: Status::Todo,
         }
+    }
+}
+
+impl fmt::Display for Status {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let icon = match self {
+            Status::Todo => "[]",
+            Status::InProgress => "[~]",
+            Status::Done => "[x]",
+        };
+        write!(f, "{}", icon)
+    }
+}
+
+impl fmt::Display for Task {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.status, self.description)
     }
 }

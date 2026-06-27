@@ -15,7 +15,8 @@ enum Command {
     List,
     Filter(Status),
     Quit,
-    Unknown,
+    Unrecognized(String),
+    InvalidArgument(String),
 }
 
 fn parse_command(input: &str) -> Command {
@@ -27,25 +28,25 @@ fn parse_command(input: &str) -> Command {
         "add" => Command::Add(argument.to_string()),
         "done" => match argument.parse::<u32>() {
             Ok(id) => Command::Done(id),
-            Err(_) => Command::Unknown,
+            Err(_) => Command::InvalidArgument("done requires a numeric id".to_string()),
         },
         "remove" => match argument.parse::<u32>() {
             Ok(id) => Command::Remove(id),
-            Err(_) => Command::Unknown,
+            Err(_) => Command::InvalidArgument("remove requires a numeric id".to_string()),
         },
         "progress" => match argument.parse::<u32>() {
             Ok(id) => Command::Progress(id),
-            Err(_) => Command::Unknown,
+            Err(_) => Command::InvalidArgument("progress requires a numeric id".to_string()),
         },
         "filter" | "status" => match argument.to_lowercase().as_str() {
             "todo" => Command::Filter(Status::Todo),
             "done" => Command::Filter(Status::Done),
             "inprogress" | "progress" => Command::Filter(Status::InProgress),
-            _ => Command::Unknown,
+            _ => Command::InvalidArgument("filter requires: todo | done | inprogress".to_string()),
         },
         "list" => Command::List,
         "quit" => Command::Quit,
-        _ => Command::Unknown,
+        _ => Command::Unrecognized(command.to_string()),
     }
 }
 
@@ -94,7 +95,7 @@ fn main() {
             Command::Filter(status) => {
                 let lines = todo.list_by_status(status);
                 if lines.is_empty() {
-                    println!("No tasks found with status '{:?}'.", status);
+                    println!("No tasks found with status '{}'.", status);
                 } else {
                     TodoList::print_lines(lines);
                 }
@@ -103,9 +104,8 @@ fn main() {
                 println!("Goodbye!");
                 break;
             }
-            Command::Unknown => println!(
-                "Unknown command. Use 'filter todo', 'filter done', or 'filter inprogress'."
-            ),
+            Command::Unrecognized(cmd) => println!("Unknown command: '{}'.", cmd),
+            Command::InvalidArgument(msg) => println!("Invalid argument: {}.", msg),
         }
     }
 }

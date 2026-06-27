@@ -48,14 +48,7 @@ impl TodoList {
 
         self.tasks
             .iter()
-            .map(|(id, task)| {
-                let status_icon = match task.status {
-                    Status::Done => "[X]",
-                    Status::Todo => "[ ]",
-                    Status::InProgress => "[~]",
-                };
-                format!("{} {} {}", id, status_icon, task.description)
-            })
+            .map(|(id, task)| format!("{} {}", id, task))
             .collect()
     }
 
@@ -64,14 +57,7 @@ impl TodoList {
         self.tasks
             .iter()
             .filter(|(_, task)| task.status == status)
-            .map(|(id, task)| {
-                let status_icon = match task.status {
-                    Status::Done => "[X]",
-                    Status::Todo => "[ ]",
-                    Status::InProgress => "[~]",
-                };
-                format!("{} {} {}", id, status_icon, task.description)
-            })
+            .map(|(id, task)| format!("{} {}", id, task))
             .collect()
     }
     pub fn print_lines(lines: Vec<String>) {

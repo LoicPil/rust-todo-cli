@@ -40,17 +40,17 @@ like.
 
 ## Chapter 9 — Error Handling
 
-- [ ] Define `enum TodoError { TaskNotFound(u32) }`
-- [ ] `complete_task`, `remove_task`, `set_in_progress` return
+- [X] Define `enum TodoError { TaskNotFound(u32) }`
+- [X] `complete_task`, `remove_task`, `set_in_progress` return
   `Result<(), TodoError>`
-- [ ] Main loop matches on `Result` and prints user-friendly errors
-- [ ] Optional: richer `Command::Unknown` → distinguish "unrecognized
+- [X] Main loop matches on `Result` and prints user-friendly errors
+- [X] Optional: richer `Command::Unknown` → distinguish "unrecognized
   command" from "missing/invalid argument"
 
 ## Chapter 10 — Generics, Traits, Lifetimes
 
-- [ ] Implement `Display` for `Task` (clean `println!("{}", task)`)
-- [ ] Optional: add `priority: u8` field, implement `PartialOrd`/`Ord`
+- [x] Implement `Display` for `Task` (clean `println!("{}", task)`)
+- [] Optional: add `priority: u8` field, implement `PartialOrd`/`Ord`
   for sorting (note: derive order on `Status` matters if it's involved
   in comparisons)
 
