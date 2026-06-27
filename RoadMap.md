@@ -50,7 +50,7 @@ like.
 ## Chapter 10 — Generics, Traits, Lifetimes
 
 - [x] Implement `Display` for `Task` (clean `println!("{}", task)`)
-- [] Optional: add `priority: u8` field, implement `PartialOrd`/`Ord`
+- [ ] Optional: add `priority: u8` field, implement `PartialOrd`/`Ord`
   for sorting (note: derive order on `Status` matters if it's involved
   in comparisons)
 
