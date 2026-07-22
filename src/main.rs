@@ -7,6 +7,8 @@ use crate::todo_list::TodoList;
 use std::io;
 use std::io::Write;
 
+const SAVE_PATH: &str = "todos.json";
+
 enum Command {
     Add(String),
     Done(u32),
@@ -51,7 +53,7 @@ fn parse_command(input: &str) -> Command {
 }
 
 fn main() {
-    let mut todo = TodoList::new();
+    let mut todo = TodoList::load_from_file(SAVE_PATH).unwrap_or_else(|_| TodoList::new());
 
     println!("Welcome to the Rust Todo List!");
 
@@ -101,6 +103,9 @@ fn main() {
                 }
             }
             Command::Quit => {
+                if let Err(e) = todo.save_to_file(SAVE_PATH) {
+                    println!("Warning: failed to save tasks: {}", e);
+                }
                 println!("Goodbye!");
                 break;
             }

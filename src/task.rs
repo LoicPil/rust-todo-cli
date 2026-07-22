@@ -1,13 +1,14 @@
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Status {
     Todo,
     InProgress,
     Done,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Task {
     pub description: String,
     pub status: Status,

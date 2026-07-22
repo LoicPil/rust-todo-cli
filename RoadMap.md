@@ -25,58 +25,71 @@ like.
   (pre-empts part of Ch. 9)
 - [x] Bonus: `list_tasks` handles the empty-list case
 
-## Chapter 7 — Packages, Crates, Modules
+## Chapter 7 — Packages, Crates, Modules (done)
 
 - [x] Split into `task.rs` (Task + Status), `todo_list.rs` (TodoList),
   `main.rs` (CLI loop + Command + parse_command)
 - [x] Use `mod` / `use` correctly across files
 
-## Chapter 8 — Common Collections
+## Chapter 8 — Common Collections (done)
 
-- [X] Switch storage from `Vec<Task>` to `HashMap<u32, Task>` keyed by an
-  auto-incrementing ID
-- [X] Add `list_by_status(&self, status: Status)` filtering method
-- [X] Update `Command::Done`/`Remove`/`Progress` to use the new ID type
+- [x] Switch storage from `Vec<Task>` to `HashMap<u32, Task>` keyed by an
+  auto-incrementing ID (`next_id` counter — IDs stay stable across deletions)
+- [x] Add `list_by_status(&self, status: Status)` filtering method
+- [x] Update `Command::Done`/`Remove`/`Progress` to use the new ID type (`u32`)
 
-## Chapter 9 — Error Handling
+## Chapter 9 — Error Handling (done)
 
-- [X] Define `enum TodoError { TaskNotFound(u32) }`
-- [X] `complete_task`, `remove_task`, `set_in_progress` return
+- [x] Define `enum TodoError { TaskNotFound(u32) }` (`#[derive(PartialEq, Debug)]`)
+- [x] `complete_task`, `remove_task`, `set_in_progress` return
   `Result<(), TodoError>`
-- [X] Main loop matches on `Result` and prints user-friendly errors
-- [X] Optional: richer `Command::Unknown` → distinguish "unrecognized
-  command" from "missing/invalid argument"
+- [x] Main loop matches on `Result` and prints user-friendly errors
+- [x] Richer command parsing → `Command::Unrecognized(String)` (unknown
+  command name) split from `Command::InvalidArgument(String)` (bad/missing
+  argument), instead of a single `Unknown` variant
 
-## Chapter 10 — Generics, Traits, Lifetimes
+## Chapter 10 — Generics, Traits, Lifetimes (done)
 
-- [x] Implement `Display` for `Task` (clean `println!("{}", task)`)
-- [ ] Optional: add `priority: u8` field, implement `PartialOrd`/`Ord`
-  for sorting (note: derive order on `Status` matters if it's involved
-  in comparisons)
+- [x] Implement `Display` for `Status` (icons: `[]`, `[~]`, `[x]`) and `Task`
+  (`"{status} {description}"`)
+- [ ] Optional: `priority: u8` field + `PartialOrd`/`Ord` — not done, skipped
+  as optional
 
-## Chapter 11 — Automated Tests
+## Chapter 11 — Automated Tests (done)
 
-- [ ] Refactor `list_tasks`/`list_by_status` to return `String`/`Vec<String>`
-  (testable, not just printed)
-- [ ] Unit tests: add/complete/remove (including not-found cases),
-  status transitions, filtering
+- [x] Refactor `list_tasks`/`list_by_status` to return `Vec<String>`
+  (testable, not just printed) via a shared `print_lines` helper
+- [x] Unit tests: add, complete (+ not-found case), remove (+ not-found case),
+  set_in_progress, filter by status
 
-## Chapter 12 — An I/O Project
+## Chapter 12 — An I/O Project (not applicable)
 
-- [ ] Review CLI structure against the `minigrep` pattern (separating
-  argument parsing, logic, and I/O)
-- [ ] Clean up `main.rs` so it mostly just wires things together
+- Evaluated and deemed not applicable: this is a REPL-style interactive
+  program rather than a one-shot CLI tool like `minigrep`, so there's no
+  argument-parsing/logic/I/O split to extract in the same way. Skipped by
+  design, not an oversight.
 
-## Chapter 13 — Iterators & Closures
+## Chapter 13 — Iterators & Closures (done)
 
-- [ ] Rewrite `list_by_status` using `.filter()` with a closure
-- [ ] Add `.sort_by_key()` for sorting by priority/status
+- [x] `list_by_status` already used `.filter()` with a closure (done as part
+  of Ch. 8/11 work)
+- [x] `list_tasks` and `list_by_status` now collect into a `Vec<(&u32, &Task)>`
+  and `.sort_by_key(|(id, _)| **id)` before formatting, fixing the
+  previously unordered `HashMap` iteration
 
-## Persistence (after Ch. 12, using `serde` + `serde_json`)
+## Persistence (using `serde` + `serde_json`) (done)
 
-- [ ] `#[derive(Serialize, Deserialize)]` on `Task` / `Status`
-- [ ] `save_to_file(&self, path: &str)` and `load_from_file(path: &str)`
-- [ ] Load on startup, save on `Command::Quit`
+- [x] `#[derive(Serialize, Deserialize)]` on `Task`, `Status`, and `TodoList`
+- [x] `save_to_file(&self, path: &str) -> io::Result<()>` and
+  `load_from_file(path: &str) -> io::Result<TodoList>`
+- [x] Load on startup (`TodoList::load_from_file`, falling back to
+  `TodoList::new()` if the file doesn't exist yet), save on `Command::Quit`
+- [x] Round-trip test (save → load → assert) and missing-file test
+- Known rough edge, deliberately left as-is for now: `serde_json::Error` is
+  converted to `io::Error` via `.map_err(..., io::ErrorKind::Other)` inside
+  `save_to_file`/`load_from_file` since `?` can't chain the two error types
+  directly. A cleaner fix (a dedicated `AppError` enum with `From` impls) is
+  a good candidate mini-exercise once comfortable with Ch. 9 patterns again.
 
 ## Chapter 15 — Smart Pointers (optional)
 

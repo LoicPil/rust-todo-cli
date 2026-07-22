@@ -1,11 +1,16 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
+use std::io;
 
 use crate::task::{Status, Task};
+
 #[derive(PartialEq, Debug)]
 pub enum TodoError {
     TaskNotFound(u32),
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct TodoList {
     tasks: HashMap<u32, Task>,
     next_id: u32,
@@ -29,6 +34,7 @@ impl TodoList {
         self.tasks.remove(&id).ok_or(TodoError::TaskNotFound(id))?;
         Ok(())
     }
+
     pub fn complete_task(&mut self, id: u32) -> Result<(), TodoError> {
         let task = self.tasks.get_mut(&id).ok_or(TodoError::TaskNotFound(id))?;
         task.status = Status::Done;
@@ -46,26 +52,54 @@ impl TodoList {
             return vec!["No tasks".to_string()];
         }
 
-        self.tasks
+        let mut entries: Vec<(&u32, &Task)> = self.tasks.iter().collect();
+        entries.sort_by_key(|(id, _)| **id);
+
+        entries
             .iter()
             .map(|(id, task)| format!("{} {}", id, task))
             .collect()
     }
 
-    /// Retourne une liste de chaînes formatées filtrées par statut
+    /// Retourne une liste de chaînes formatées filtrées par statut, triée par id
     pub fn list_by_status(&self, status: Status) -> Vec<String> {
-        self.tasks
+        let mut entries: Vec<(&u32, &Task)> = self
+            .tasks
             .iter()
             .filter(|(_, task)| task.status == status)
+            .collect();
+        entries.sort_by_key(|(id, _)| **id);
+
+        entries
+            .iter()
             .map(|(id, task)| format!("{} {}", id, task))
             .collect()
     }
+
     pub fn print_lines(lines: Vec<String>) {
         for line in lines {
             println!("{}", line);
         }
     }
+
+    pub fn save_to_file(&self, path: &str) -> io::Result<()> {
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        fs::write(path, json)
+    }
+
+    pub fn load_from_file(path: &str) -> io::Result<TodoList> {
+        match fs::read_to_string(path) {
+            Ok(contents) => {
+                let list = serde_json::from_str(&contents)
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                Ok(list)
+            }
+            Err(_) => Ok(TodoList::new()),
+        }
+    }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,5 +155,25 @@ mod tests {
         list.complete_task(1).unwrap();
         assert_eq!(list.list_by_status(Status::Done).len(), 1);
         assert_eq!(list.list_by_status(Status::Todo).len(), 1);
+    }
+
+    #[test]
+    fn test_save_and_load_roundtrip() {
+        let path = "test_todos.json";
+        let mut list = TodoList::new();
+        list.add_task("Persisted task".to_string());
+        list.complete_task(1).unwrap();
+        list.save_to_file(path).unwrap();
+
+        let loaded = TodoList::load_from_file(path).unwrap();
+        assert_eq!(loaded.list_by_status(Status::Done).len(), 1);
+
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn test_load_missing_file_returns_empty_list() {
+        let loaded = TodoList::load_from_file("does_not_exist.json").unwrap();
+        assert_eq!(loaded.list_tasks(), vec!["No tasks".to_string()]);
     }
 }
