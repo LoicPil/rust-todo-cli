@@ -1,3 +1,6 @@
+//! Storage and operations on the collection of tasks: [`TodoList`] and
+//! its error type [`TodoError`].
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -5,11 +8,18 @@ use std::io;
 
 use crate::task::{Status, Task};
 
+/// Errors that can occur when operating on a [`TodoList`].
 #[derive(PartialEq, Debug)]
 pub enum TodoError {
+    /// No task exists with the given id.
     TaskNotFound(u32),
 }
 
+/// An in-memory collection of tasks, keyed by an auto-incrementing `u32` id.
+///
+/// Ids are never reused, even after a task is removed: they come from a
+/// monotonically increasing `next_id` counter rather than being derived
+/// from the current size of the collection.
 #[derive(Serialize, Deserialize)]
 pub struct TodoList {
     tasks: HashMap<u32, Task>,
@@ -17,6 +27,7 @@ pub struct TodoList {
 }
 
 impl TodoList {
+    /// Creates a new, empty [`TodoList`]. The first task added will get id `1`.
     pub fn new() -> TodoList {
         TodoList {
             tasks: HashMap::new(),
@@ -24,29 +35,59 @@ impl TodoList {
         }
     }
 
+    /// Adds a new task with the given description and status
+    /// [`Status::Todo`], assigning it the next available id.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut list = TodoList::new();
+    /// list.add_task("Buy milk".to_string());
+    /// assert_eq!(list.list_tasks().len(), 1);
+    /// ```
     pub fn add_task(&mut self, description: String) {
         let id = self.next_id;
         self.tasks.insert(id, Task::new(description));
         self.next_id += 1;
     }
 
+    /// Removes the task with the given id.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TodoError::TaskNotFound`] if no task with that id exists.
     pub fn remove_task(&mut self, id: u32) -> Result<(), TodoError> {
         self.tasks.remove(&id).ok_or(TodoError::TaskNotFound(id))?;
         Ok(())
     }
 
+    /// Marks the task with the given id as [`Status::Done`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TodoError::TaskNotFound`] if no task with that id exists.
     pub fn complete_task(&mut self, id: u32) -> Result<(), TodoError> {
         let task = self.tasks.get_mut(&id).ok_or(TodoError::TaskNotFound(id))?;
         task.status = Status::Done;
         Ok(())
     }
 
+    /// Marks the task with the given id as [`Status::InProgress`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TodoError::TaskNotFound`] if no task with that id exists.
     pub fn set_in_progress(&mut self, id: u32) -> Result<(), TodoError> {
         let task = self.tasks.get_mut(&id).ok_or(TodoError::TaskNotFound(id))?;
         task.status = Status::InProgress;
         Ok(())
     }
 
+    /// Returns every task formatted as `"{id} {status_icon} {description}"`,
+    /// sorted by ascending id.
+    ///
+    /// Returns a single-element vector containing `"No tasks"` if the list
+    /// is empty.
     pub fn list_tasks(&self) -> Vec<String> {
         if self.tasks.is_empty() {
             return vec!["No tasks".to_string()];
@@ -61,7 +102,11 @@ impl TodoList {
             .collect()
     }
 
-    /// Retourne une liste de chaînes formatées filtrées par statut, triée par id
+    /// Returns every task with the given [`Status`], formatted the same way
+    /// as [`TodoList::list_tasks`] and sorted by ascending id.
+    ///
+    /// Returns an empty vector if no task has the given status (callers
+    /// distinguish this from the "list is empty" case of `list_tasks`).
     pub fn list_by_status(&self, status: Status) -> Vec<String> {
         let mut entries: Vec<(&u32, &Task)> = self
             .tasks
@@ -76,18 +121,38 @@ impl TodoList {
             .collect()
     }
 
+    /// Prints each line of a formatted task list, one per line.
+    ///
+    /// Typically used with the output of [`TodoList::list_tasks`] or
+    /// [`TodoList::list_by_status`].
     pub fn print_lines(lines: Vec<String>) {
         for line in lines {
             println!("{}", line);
         }
     }
 
+    /// Serializes the whole list to pretty-printed JSON and writes it to
+    /// `path`, overwriting any existing file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`io::Error`] if serialization fails or the file cannot
+    /// be written (e.g. permissions, invalid path).
     pub fn save_to_file(&self, path: &str) -> io::Result<()> {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         fs::write(path, json)
     }
 
+    /// Loads a [`TodoList`] from a JSON file at `path`.
+    ///
+    /// If the file does not exist (e.g. first run of the program), returns
+    /// a fresh, empty [`TodoList`] instead of an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`io::Error`] if the file exists but its contents are not
+    /// valid JSON for a [`TodoList`].
     pub fn load_from_file(path: &str) -> io::Result<TodoList> {
         match fs::read_to_string(path) {
             Ok(contents) => {

@@ -1,3 +1,9 @@
+//! Interactive command-line entry point for the todo app.
+//!
+//! Loads any previously saved list from [`SAVE_PATH`] on startup, runs a
+//! REPL loop that parses and executes user commands, and saves the list
+//! back to disk when the user quits.
+
 mod task;
 mod todo_list;
 
@@ -7,20 +13,38 @@ use crate::todo_list::TodoList;
 use std::io;
 use std::io::Write;
 
+/// Path to the JSON file used to persist the todo list between runs.
 const SAVE_PATH: &str = "todos.json";
 
+/// A parsed user command, produced by [`parse_command`] from a line of
+/// raw input.
 enum Command {
+    /// Add a new task with the given description.
     Add(String),
+    /// Mark the task with the given id as done.
     Done(u32),
+    /// Remove the task with the given id.
     Remove(u32),
+    /// Mark the task with the given id as in progress.
     Progress(u32),
+    /// List all tasks.
     List,
+    /// List only tasks with the given status.
     Filter(Status),
+    /// Exit the program (saving first).
     Quit,
+    /// The command name itself was not recognized.
     Unrecognized(String),
+    /// The command was recognized but its argument was missing or invalid.
     InvalidArgument(String),
 }
 
+/// Parses a raw line of user input into a [`Command`].
+///
+/// The first whitespace-separated token is treated as the command name;
+/// everything after it (trimmed) is the argument. Unknown command names
+/// produce [`Command::Unrecognized`]; known commands with a bad or missing
+/// argument produce [`Command::InvalidArgument`].
 fn parse_command(input: &str) -> Command {
     let mut parts = input.splitn(2, ' ');
     let command = parts.next().unwrap_or("");
@@ -52,6 +76,13 @@ fn parse_command(input: &str) -> Command {
     }
 }
 
+/// Runs the interactive todo list REPL.
+///
+/// Loads [`SAVE_PATH`] on startup (or starts with an empty list if it
+/// doesn't exist yet), then loops reading a line of input, parsing it via
+/// [`parse_command`], and executing the corresponding [`TodoList`]
+/// operation until the user issues `quit`, at which point the list is
+/// saved back to [`SAVE_PATH`].
 fn main() {
     let mut todo = TodoList::load_from_file(SAVE_PATH).unwrap_or_else(|_| TodoList::new());
 
