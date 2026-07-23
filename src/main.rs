@@ -12,6 +12,7 @@ use crate::board::Board;
 use crate::task::Status;
 use crate::todo_list::TodoError;
 use crate::todo_list::TodoList;
+use colored::Colorize;
 use std::io;
 use std::io::Write;
 
@@ -37,12 +38,16 @@ enum Command {
     Filter(Status),
     /// Exit the program (saving first).
     Quit,
+    /// Show the help menu.
+    Help,
     /// The command name itself was not recognized.
     Unrecognized(String),
     /// The command was recognized but its argument was missing or invalid.
     InvalidArgument(String),
 
     // --- Board (Chapter 15) commands ---
+    /// `bcreate <list>` — create an empty named list.
+    BoardCreate(String),
     /// `badd <list> <description>` — add a new task directly into a
     /// named list (creating the list if needed).
     BoardAdd(String, String),
@@ -92,6 +97,15 @@ fn parse_command(input: &str) -> Command {
         },
         "list" => Command::List,
         "quit" => Command::Quit,
+        "help" | "?" => Command::Help,
+
+        "bcreate" => {
+            if argument.is_empty() {
+                Command::InvalidArgument("bcreate requires: <list>".to_string())
+            } else {
+                Command::BoardCreate(argument.to_string())
+            }
+        }
 
         "badd" => {
             // argument is "<list> <description>" — split once more on
@@ -140,27 +154,54 @@ fn parse_command(input: &str) -> Command {
     }
 }
 
-/// Runs the interactive todo list REPL.
-///
-/// Loads [`SAVE_PATH`] on startup (or starts with an empty list if it
-/// doesn't exist yet), then loops reading a line of input, parsing it via
-/// [`parse_command`], and executing the corresponding [`TodoList`]
-/// operation until the user issues `quit`, at which point the list is
-/// saved back to [`SAVE_PATH`].
+/// Prints the full help menu, grouped by section.
+fn print_help() {
+    println!("\n{}", "── Basic list ──".bold());
+    println!("  {:<28} add a new task", "add <desc>".cyan());
+    println!("  {:<28} mark a task done", "done <id>".cyan());
+    println!("  {:<28} remove a task", "remove <id>".cyan());
+    println!("  {:<28} mark a task in progress", "progress <id>".cyan());
+    println!("  {:<28} show all tasks", "list".cyan());
+    println!(
+        "  {:<28} show tasks with a given status",
+        "filter <todo|done|inprogress>".cyan()
+    );
+
+    println!("\n{}", "── Multi-list board ──".bold());
+    println!("  {:<28} create an empty list", "bcreate <list>".magenta());
+    println!(
+        "  {:<28} add a task directly into a list",
+        "badd <list> <desc>".magenta()
+    );
+    println!(
+        "  {:<28} mark a board task done (all lists see it)",
+        "bdone <id>".magenta()
+    );
+    println!("  {:<28} show every list's name", "blists".magenta());
+    println!("  {:<28} show tasks in a list", "blist <list>".magenta());
+    println!(
+        "  {:<28} share an existing task into another list",
+        "bassign <id> <list>".magenta()
+    );
+    println!(
+        "  {:<28} show which lists contain a task",
+        "bwhere <id>".magenta()
+    );
+
+    println!("\n{}", "── Other ──".bold());
+    println!("  {:<28} show this help", "help / ?".yellow());
+    println!("  {:<28} save and exit", "quit".yellow());
+}
+
 fn main() {
     let mut todo = TodoList::load_from_file(SAVE_PATH).unwrap_or_else(|_| TodoList::new());
     let mut board = Board::load_from_file(BOARD_SAVE_PATH).unwrap_or_else(|_| Board::new());
 
-    println!("Welcome to the Rust Todo List!");
+    println!("{}", "Welcome to the Rust Todo List!".bold().green());
+    println!("Type {} for the list of commands.", "help".yellow());
 
     loop {
-        println!(
-            "\nCommands: add <desc> | done <id> | remove <id> | progress <id> | list | filter <todo|done|inprogress> | quit"
-        );
-        println!(
-            "Board commands: badd <list> <desc> | bdone <id> | blists | blist <list> | bassign <id> <list> | bwhere <id>"
-        );
-        print!("> ");
+        print!("\n{} ", ">".bold().blue());
         std::io::stdout().flush().unwrap();
 
         let mut input = String::new();
@@ -171,23 +212,29 @@ fn main() {
         match parse_command(input.trim()) {
             Command::Add(desc) => {
                 if desc.is_empty() {
-                    println!("Error: description cannot be empty.");
+                    println!("{}", "Error: description cannot be empty.".red());
                 } else {
                     todo.add_task(desc);
-                    println!("Task added.");
+                    println!("{}", "Task added.".green());
                 }
             }
             Command::Done(id) => match todo.complete_task(id) {
-                Ok(()) => println!("Task {} marked as done.", id),
-                Err(TodoError::TaskNotFound(id)) => println!("Error: task {} not found.", id),
+                Ok(()) => println!("{}", format!("Task {} marked as done.", id).green()),
+                Err(TodoError::TaskNotFound(id)) => {
+                    println!("{}", format!("Error: task {} not found.", id).red())
+                }
             },
             Command::Remove(id) => match todo.remove_task(id) {
-                Ok(()) => println!("Task {} removed.", id),
-                Err(TodoError::TaskNotFound(id)) => println!("Error: task {} not found.", id),
+                Ok(()) => println!("{}", format!("Task {} removed.", id).green()),
+                Err(TodoError::TaskNotFound(id)) => {
+                    println!("{}", format!("Error: task {} not found.", id).red())
+                }
             },
             Command::Progress(id) => match todo.set_in_progress(id) {
-                Ok(()) => println!("Task {} marked as in progress.", id),
-                Err(TodoError::TaskNotFound(id)) => println!("Error: task {} not found.", id),
+                Ok(()) => println!("{}", format!("Task {} marked as in progress.", id).green()),
+                Err(TodoError::TaskNotFound(id)) => {
+                    println!("{}", format!("Error: task {} not found.", id).red())
+                }
             },
             Command::List => {
                 let lines = todo.list_tasks();
@@ -196,36 +243,57 @@ fn main() {
             Command::Filter(status) => {
                 let lines = todo.list_by_status(status);
                 if lines.is_empty() {
-                    println!("No tasks found with status '{}'.", status);
+                    println!(
+                        "{}",
+                        format!("No tasks found with status '{}'.", status).yellow()
+                    );
                 } else {
                     TodoList::print_lines(lines);
                 }
             }
+            Command::Help => print_help(),
             Command::Quit => {
                 if let Err(e) = todo.save_to_file(SAVE_PATH) {
-                    println!("Warning: failed to save tasks: {}", e);
+                    println!("{}", format!("Warning: failed to save tasks: {}", e).red());
                 }
                 if let Err(e) = board.save_to_file(BOARD_SAVE_PATH) {
-                    println!("Warning: failed to save board: {}", e);
+                    println!("{}", format!("Warning: failed to save board: {}", e).red());
                 }
-                println!("Goodbye!");
+                println!("{}", "Goodbye!".bold().green());
                 break;
             }
-            Command::Unrecognized(cmd) => println!("Unknown command: '{}'.", cmd),
-            Command::InvalidArgument(msg) => println!("Invalid argument: {}.", msg),
+            Command::Unrecognized(cmd) => println!(
+                "{}",
+                format!("Unknown command: '{}'. Type 'help' for the list.", cmd).red()
+            ),
+            Command::InvalidArgument(msg) => {
+                println!("{}", format!("Invalid argument: {}.", msg).red())
+            }
 
+            Command::BoardCreate(list_name) => {
+                board.create_list(&list_name);
+                println!("{}", format!("List '{}' created.", list_name).green());
+            }
             Command::BoardAdd(list_name, desc) => {
                 let id = board.add_task(&list_name, desc);
-                println!("Task {} added to list '{}'.", id, list_name);
+                println!(
+                    "{}",
+                    format!("Task {} added to list '{}'.", id, list_name).green()
+                );
             }
             Command::BoardDone(id) => match board.complete_task(id) {
-                Ok(()) => println!("Task {} marked as done (all lists).", id),
-                Err(TodoError::TaskNotFound(id)) => println!("Error: task {} not found.", id),
+                Ok(()) => println!(
+                    "{}",
+                    format!("Task {} marked as done (all lists).", id).green()
+                ),
+                Err(TodoError::TaskNotFound(id)) => {
+                    println!("{}", format!("Error: task {} not found.", id).red())
+                }
             },
             Command::BoardList(list_name) => {
                 let lines = board.list_tasks(&list_name);
                 if lines.is_empty() {
-                    println!("No tasks in list '{}'.", list_name);
+                    println!("{}", format!("No tasks in list '{}'.", list_name).yellow());
                 } else {
                     TodoList::print_lines(lines);
                 }
@@ -233,23 +301,34 @@ fn main() {
             Command::BoardLists => {
                 let names = board.list_names();
                 if names.is_empty() {
-                    println!("No lists yet.");
+                    println!("{}", "No lists yet.".yellow());
                 } else {
-                    println!("Lists ({}): {}", names.len(), names.join(", "));
+                    println!(
+                        "{}",
+                        format!("Lists ({}): {}", names.len(), names.join(", ")).cyan()
+                    );
                 }
             }
             Command::BoardAssign(id, list_name) => {
                 match board.assign_task_to_list(id, &list_name) {
-                    Ok(()) => println!("Task {} shared into list '{}'.", id, list_name),
-                    Err(TodoError::TaskNotFound(id)) => println!("Error: task {} not found.", id),
+                    Ok(()) => println!(
+                        "{}",
+                        format!("Task {} shared into list '{}'.", id, list_name).green()
+                    ),
+                    Err(TodoError::TaskNotFound(id)) => {
+                        println!("{}", format!("Error: task {} not found.", id).red())
+                    }
                 }
             }
             Command::BoardWhere(id) => {
                 let lists = board.lists_containing(id);
                 if lists.is_empty() {
-                    println!("Task {} is not in any list.", id);
+                    println!("{}", format!("Task {} is not in any list.", id).yellow());
                 } else {
-                    println!("Task {} is in: {}", id, lists.join(", "));
+                    println!(
+                        "{}",
+                        format!("Task {} is in: {}", id, lists.join(", ")).cyan()
+                    );
                 }
             }
         }
