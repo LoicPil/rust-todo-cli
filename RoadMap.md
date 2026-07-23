@@ -93,7 +93,7 @@ like.
 
 ## Chapter 15 — Smart Pointers (optional)
 
-- [ ] Multiple named lists (e.g. "Work"/"Personal") sharing tasks via
+- [x] Multiple named lists (e.g. "Work"/"Personal") sharing tasks via
   `Rc<RefCell<Task>>`
 
 ## Chapter 16 — Fearless Concurrency (optional)
