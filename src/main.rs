@@ -1,3 +1,105 @@
+//! Interactive command-line entry point for the todo app.
+//!
+//! Loads any previously saved list from [`SAVE_PATH`] on startup, runs a
+//! REPL loop that parses and executes user commands, and saves the list
+//! back to disk when the user quits.
+
+mod board;
+mod task;
+mod todo_list;
+
+use crate::board::Board;
+use crate::task::Status;
+use crate::todo_list::TodoError;
+use crate::todo_list::TodoList;
+use colored::Colorize;
+use std::io;
+use std::io::Write;
+
+/// Path to the JSON file used to persist the todo list between runs.
+const SAVE_PATH: &str = "todos.json";
+/// Path to the JSON file used to persist the multi-list board between runs.
+const BOARD_SAVE_PATH: &str = "board.json";
+
+/// A parsed user command, produced by [`parse_command`] from a line of
+/// raw input.
+enum Command {
+    /// Add a new task with the given description.
+    Add(String),
+    /// Mark the task with the given id as done.
+    Done(u32),
+    /// Remove the task with the given id.
+    Remove(u32),
+    /// Mark the task with the given id as in progress.
+    Progress(u32),
+    /// List all tasks.
+    List,
+    /// List only tasks with the given status.
+    Filter(Status),
+    /// Exit the program (saving first).
+    Quit,
+    /// Show the help menu.
+    Help,
+    /// The command name itself was not recognized.
+    Unrecognized(String),
+    /// The command was recognized but its argument was missing or invalid.
+    InvalidArgument(String),
+
+    // --- Board (Chapter 15) commands ---
+    /// `bcreate <list>` — create an empty named list.
+    BoardCreate(String),
+    /// `badd <list> <description>` — add a new task directly into a
+    /// named list (creating the list if needed).
+    BoardAdd(String, String),
+    /// `bdone <id>` — mark a board task done, visible from every list
+    /// that references it.
+    BoardDone(u32),
+    /// `blist <list>` — show tasks in a named list.
+    BoardList(String),
+    /// `blists` — show the names of every list that currently exists.
+    BoardLists,
+    /// `bassign <id> <list>` — share an existing task into another list.
+    BoardAssign(u32, String),
+    /// `bunassign <id> <list>` — remove a task from one list, keeping it
+    /// in others (and deleting it entirely if that was the last one).
+    BoardUnassign(u32, String),
+    /// `bremove <id>` — remove a task entirely, from every list.
+    BoardRemove(u32),
+    /// `bwhere <id>` — show which lists reference a given task id.
+    BoardWhere(u32),
+}
+
+/// Parses a raw line of user input into a [`Command`].
+///
+/// The first whitespace-separated token is treated as the command name;
+/// everything after it (trimmed) is the argument. Unknown command names
+/// produce [`Command::Unrecognized`]; known commands with a bad or missing
+/// argument produce [`Command::InvalidArgument`].
+fn parse_command(input: &str) -> Command {
+    let mut parts = input.splitn(2, ' ');
+    let command = parts.next().unwrap_or("");
+    let argument = parts.next().unwrap_or("").trim();
+
+    match command {
+        "add" => Command::Add(argument.to_string()),
+        "done" => match argument.parse::<u32>() {
+            Ok(id) => Command::Done(id),
+            Err(_) => Command::InvalidArgument("done requires a numeric id".to_string()),
+        },
+        "remove" => match argument.parse::<u32>() {
+            Ok(id) => Command::Remove(id),
+            Err(_) => Command::InvalidArgument("remove requires a numeric id".to_string()),
+        },
+        "progress" => match argument.parse::<u32>() {
+            Ok(id) => Command::Progress(id),
+            Err(_) => Command::InvalidArgument("progress requires a numeric id".to_string()),
+        },
+        "filter" | "status" => match argument.to_lowercase().as_str() {
+            "todo" => Command::Filter(Status::Todo),
+            "done" => Command::Filter(Status::Done),
+            "inprogress" | "progress" => Command::Filter(Status::InProgress),
+            _ => Command::InvalidArgument("filter requires: todo | done | inprogress".to_string()),
+        },
         "list" => Command::List,
         "quit" => Command::Quit,
         "help" | "?" => Command::Help,
@@ -48,6 +150,21 @@
             }
         }
 
+        "bunassign" => {
+            let mut sub = argument.splitn(2, ' ');
+            let id_str = sub.next().unwrap_or("").trim();
+            let list_name = sub.next().unwrap_or("").trim();
+            match (id_str.parse::<u32>(), list_name.is_empty()) {
+                (Ok(id), false) => Command::BoardUnassign(id, list_name.to_string()),
+                _ => Command::InvalidArgument("bunassign requires: <id> <list>".to_string()),
+            }
+        }
+
+        "bremove" => match argument.parse::<u32>() {
+            Ok(id) => Command::BoardRemove(id),
+            Err(_) => Command::InvalidArgument("bremove requires a numeric id".to_string()),
+        },
+
         "bwhere" => match argument.parse::<u32>() {
             Ok(id) => Command::BoardWhere(id),
             Err(_) => Command::InvalidArgument("bwhere requires a numeric id".to_string()),
@@ -85,6 +202,14 @@ fn print_help() {
     println!(
         "  {:<28} share an existing task into another list",
         "bassign <id> <list>".magenta()
+    );
+    println!(
+        "  {:<28} remove a task from one list only",
+        "bunassign <id> <list>".magenta()
+    );
+    println!(
+        "  {:<28} remove a task entirely (all lists)",
+        "bremove <id>".magenta()
     );
     println!(
         "  {:<28} show which lists contain a task",
@@ -223,6 +348,25 @@ fn main() {
                     }
                 }
             }
+            Command::BoardUnassign(id, list_name) => match board.remove_from_list(id, &list_name) {
+                Ok(()) => println!(
+                    "{}",
+                    format!("Task {} removed from list '{}'.", id, list_name).green()
+                ),
+                Err(TodoError::TaskNotFound(id)) => println!(
+                    "{}",
+                    format!("Error: task {} not found in list '{}'.", id, list_name).red()
+                ),
+            },
+            Command::BoardRemove(id) => match board.remove_task(id) {
+                Ok(()) => println!(
+                    "{}",
+                    format!("Task {} removed entirely (all lists).", id).green()
+                ),
+                Err(TodoError::TaskNotFound(id)) => {
+                    println!("{}", format!("Error: task {} not found.", id).red())
+                }
+            },
             Command::BoardWhere(id) => {
                 let lists = board.lists_containing(id);
                 if lists.is_empty() {
@@ -237,4 +381,3 @@ fn main() {
         }
     }
 }
-
