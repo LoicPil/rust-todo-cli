@@ -1,6 +1,6 @@
 [package]
 name = "todo_list"
-version = "0.15.1"
+version = "1.0.0"
 edition = "2024"
 license="MIT"
 

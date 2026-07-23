@@ -11,12 +11,36 @@ finishing a chapter's worth of features.
 
 ## [Unreleased]
 
-- Chapter 16 (optional): background thread auto-saving to disk every N
-  seconds, using `std::thread` + `Arc<Mutex<_>>`.
+- Chapter 16 (optional, not required for 1.0): background thread
+  auto-saving to disk every N seconds, using `std::thread` + `Arc<Mutex<_>>`.
+
+## [1.0.0] - 2026-07-23
+
+Marks the project as stable and feature-complete for its core scope:
+a working, well-tested, documented CLI todo app with multi-list task
+sharing and persistence. Chapter 16 (concurrency) remains as an
+optional future addition (would ship as `1.1.0` or later) but isn't
+required for this to be considered "done."
+
+### Added
+
+- Bordered, color-coded task tables (rounded corners, aligned columns)
+  replacing plain printed lines: green + strikethrough for done tasks,
+  bold yellow for in-progress, dim gray for todo.
+- `bprogress <id>` command, completing status transitions for
+  board tasks (previously only `bdone` existed).
+- `ball` command to show every list, each with its own header, in one go.
+- Colored welcome banner and reorganized `help` menu.
+- `LICENSE` (MIT).
+
+### Changed
+
+- `TodoList::print_lines` removed, superseded by the new table renderer.
 
 ## [0.15.0] - 2026-07-23
 
 ### Added
+
 - Multi-list `Board`: named lists (e.g. "Work", "Personal") that can
   **share the same task** via `Rc<RefCell<Task>>` — completing a task
   from one list marks it done in every list it belongs to (Chapter 15).
@@ -40,6 +64,7 @@ finishing a chapter's worth of features.
 ## [0.13.0] - Chapters 13 & Persistence
 
 ### Added
+
 - `list_tasks` / `list_by_status` now sort by ascending task id before
   formatting, fixing `HashMap`'s unordered iteration (Chapter 13).
 - JSON persistence for the single-list `TodoList`: `save_to_file` /
@@ -50,6 +75,7 @@ finishing a chapter's worth of features.
 ## [0.11.0] - Chapters 8-11
 
 ### Added
+
 - Storage switched from `Vec<Task>` to `HashMap<u32, Task>` keyed by an
   auto-incrementing, never-reused id (Chapter 8).
 - `list_by_status` filtering method.
@@ -65,6 +91,7 @@ finishing a chapter's worth of features.
   filtering, including not-found error cases (Chapter 11).
 
 ### Notes
+
 - Chapter 12 (An I/O Project / `minigrep` pattern) evaluated and marked
   not applicable: this is a REPL-style interactive program rather than a
   one-shot CLI tool, so there's no argument-parsing/logic/I/O split to
@@ -73,6 +100,7 @@ finishing a chapter's worth of features.
 ## [0.7.0] - Chapters 6-7
 
 ### Added
+
 - `Status` enum (`Todo` / `InProgress` / `Done`) replacing a plain
   `done: bool` field (Chapter 6).
 - `Command` enum with payloads, and a `parse_command` function driving a
@@ -83,9 +111,11 @@ finishing a chapter's worth of features.
 ## [0.1.0] - Chapters 1-5
 
 ### Added
+
 - Initial version: `Task` struct, `TodoList` wrapping a `Vec<Task>`.
 - `add_task`, `remove_task`, `complete_task`, `list_tasks`.
 - Interactive CLI loop reading from `std::io::stdin`.
 
-[Unreleased]: https://github.com/LoicPil/rust-todo-cli/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/LoicPil/rust-todo-cli/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/LoicPil/rust-todo-cli/releases/tag/v1.0.0
 [0.15.0]: https://github.com/LoicPil/rust-todo-cli/releases/tag/v0.15.0
