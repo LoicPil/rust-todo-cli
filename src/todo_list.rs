@@ -138,12 +138,6 @@ impl TodoList {
     ///
     /// Typically used with the output of [`TodoList::list_tasks`] or
     /// [`TodoList::list_by_status`].
-    pub fn print_lines(lines: Vec<String>) {
-        for line in lines {
-            println!("{}", line);
-        }
-    }
-
     /// Serializes the whole list to pretty-printed JSON and writes it to
     /// `path`, overwriting any existing file.
     ///

@@ -121,6 +121,22 @@ impl Board {
         Ok(())
     }
 
+    /// Marks a task in progress, wherever it's referenced from. Same
+    /// shape as [`Board::complete_task`], just a different [`Status`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TodoError::TaskNotFound`] if `task_id` doesn't exist.
+    pub fn set_in_progress(&mut self, task_id: u32) -> Result<(), TodoError> {
+        let shared = self
+            .tasks
+            .get(&task_id)
+            .ok_or(TodoError::TaskNotFound(task_id))?;
+        let mut task = shared.borrow_mut();
+        task.status = Status::InProgress;
+        Ok(())
+    }
+
     /// Formats every task in the given list as `"{id} {task}"`.
     /// Returns an empty vector if the list doesn't exist or is empty.
     pub fn list_tasks(&self, list_name: &str) -> Vec<String> {
@@ -306,6 +322,14 @@ impl Board {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_set_in_progress() {
+        let mut board = Board::new();
+        let id = board.add_task("Work", "Task".to_string());
+        board.set_in_progress(id).unwrap();
+        assert!(board.list_tasks("Work")[0].contains("[~]"));
+    }
 
     #[test]
     fn test_add_task_creates_list_and_task() {
