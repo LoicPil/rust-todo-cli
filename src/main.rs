@@ -4,9 +4,11 @@
 //! REPL loop that parses and executes user commands, and saves the list
 //! back to disk when the user quits.
 
+mod board;
 mod task;
 mod todo_list;
 
+use crate::board::Board;
 use crate::task::Status;
 use crate::todo_list::TodoError;
 use crate::todo_list::TodoList;
@@ -15,6 +17,8 @@ use std::io::Write;
 
 /// Path to the JSON file used to persist the todo list between runs.
 const SAVE_PATH: &str = "todos.json";
+/// Path to the JSON file used to persist the multi-list board between runs.
+const BOARD_SAVE_PATH: &str = "board.json";
 
 /// A parsed user command, produced by [`parse_command`] from a line of
 /// raw input.
@@ -37,6 +41,20 @@ enum Command {
     Unrecognized(String),
     /// The command was recognized but its argument was missing or invalid.
     InvalidArgument(String),
+
+    // --- Board (Chapter 15) commands ---
+    /// `badd <list> <description>` — add a new task directly into a
+    /// named list (creating the list if needed).
+    BoardAdd(String, String),
+    /// `bdone <id>` — mark a board task done, visible from every list
+    /// that references it.
+    BoardDone(u32),
+    /// `blist <list>` — show tasks in a named list.
+    BoardList(String),
+    /// `bassign <id> <list>` — share an existing task into another list.
+    BoardAssign(u32, String),
+    /// `bwhere <id>` — show which lists reference a given task id.
+    BoardWhere(u32),
 }
 
 /// Parses a raw line of user input into a [`Command`].
@@ -72,6 +90,48 @@ fn parse_command(input: &str) -> Command {
         },
         "list" => Command::List,
         "quit" => Command::Quit,
+
+        "badd" => {
+            // argument is "<list> <description>" — split once more on
+            // the first remaining space.
+            let mut sub = argument.splitn(2, ' ');
+            let list_name = sub.next().unwrap_or("").trim();
+            let desc = sub.next().unwrap_or("").trim();
+            if list_name.is_empty() || desc.is_empty() {
+                Command::InvalidArgument("badd requires: <list> <description>".to_string())
+            } else {
+                Command::BoardAdd(list_name.to_string(), desc.to_string())
+            }
+        }
+
+        "bdone" => match argument.parse::<u32>() {
+            Ok(id) => Command::BoardDone(id),
+            Err(_) => Command::InvalidArgument("bdone requires a numeric id".to_string()),
+        },
+
+        "blist" => {
+            if argument.is_empty() {
+                Command::InvalidArgument("blist requires: <list>".to_string())
+            } else {
+                Command::BoardList(argument.to_string())
+            }
+        }
+
+        "bassign" => {
+            let mut sub = argument.splitn(2, ' ');
+            let id_str = sub.next().unwrap_or("").trim();
+            let list_name = sub.next().unwrap_or("").trim();
+            match (id_str.parse::<u32>(), list_name.is_empty()) {
+                (Ok(id), false) => Command::BoardAssign(id, list_name.to_string()),
+                _ => Command::InvalidArgument("bassign requires: <id> <list>".to_string()),
+            }
+        }
+
+        "bwhere" => match argument.parse::<u32>() {
+            Ok(id) => Command::BoardWhere(id),
+            Err(_) => Command::InvalidArgument("bwhere requires a numeric id".to_string()),
+        },
+
         _ => Command::Unrecognized(command.to_string()),
     }
 }
@@ -85,12 +145,16 @@ fn parse_command(input: &str) -> Command {
 /// saved back to [`SAVE_PATH`].
 fn main() {
     let mut todo = TodoList::load_from_file(SAVE_PATH).unwrap_or_else(|_| TodoList::new());
+    let mut board = Board::load_from_file(BOARD_SAVE_PATH).unwrap_or_else(|_| Board::new());
 
     println!("Welcome to the Rust Todo List!");
 
     loop {
         println!(
             "\nCommands: add <desc> | done <id> | remove <id> | progress <id> | list | filter <todo|done|inprogress> | quit"
+        );
+        println!(
+            "Board commands: badd <list> <desc> | bdone <id> | blist <list> | bassign <id> <list> | bwhere <id>"
         );
         print!("> ");
         std::io::stdout().flush().unwrap();
@@ -137,11 +201,45 @@ fn main() {
                 if let Err(e) = todo.save_to_file(SAVE_PATH) {
                     println!("Warning: failed to save tasks: {}", e);
                 }
+                if let Err(e) = board.save_to_file(BOARD_SAVE_PATH) {
+                    println!("Warning: failed to save board: {}", e);
+                }
                 println!("Goodbye!");
                 break;
             }
             Command::Unrecognized(cmd) => println!("Unknown command: '{}'.", cmd),
             Command::InvalidArgument(msg) => println!("Invalid argument: {}.", msg),
+
+            Command::BoardAdd(list_name, desc) => {
+                let id = board.add_task(&list_name, desc);
+                println!("Task {} added to list '{}'.", id, list_name);
+            }
+            Command::BoardDone(id) => match board.complete_task(id) {
+                Ok(()) => println!("Task {} marked as done (all lists).", id),
+                Err(TodoError::TaskNotFound(id)) => println!("Error: task {} not found.", id),
+            },
+            Command::BoardList(list_name) => {
+                let lines = board.list_tasks(&list_name);
+                if lines.is_empty() {
+                    println!("No tasks in list '{}'.", list_name);
+                } else {
+                    TodoList::print_lines(lines);
+                }
+            }
+            Command::BoardAssign(id, list_name) => {
+                match board.assign_task_to_list(id, &list_name) {
+                    Ok(()) => println!("Task {} shared into list '{}'.", id, list_name),
+                    Err(TodoError::TaskNotFound(id)) => println!("Error: task {} not found.", id),
+                }
+            }
+            Command::BoardWhere(id) => {
+                let lists = board.lists_containing(id);
+                if lists.is_empty() {
+                    println!("Task {} is not in any list.", id);
+                } else {
+                    println!("Task {} is in: {}", id, lists.join(", "));
+                }
+            }
         }
     }
 }

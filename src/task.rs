@@ -23,7 +23,7 @@ pub enum Status {
 /// `Task` itself does not store an id — ids are assigned and owned by
 /// [`crate::todo_list::TodoList`], which keeps tasks in a
 /// `HashMap<u32, Task>`.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Task {
     /// Free-text description of what the task is.
     pub description: String,
