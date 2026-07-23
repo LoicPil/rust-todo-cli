@@ -61,10 +61,15 @@ enum Command {
     /// `bdone <id>` — mark a board task done, visible from every list
     /// that references it.
     BoardDone(u32),
+    /// `bprogress <id>` — mark a board task in progress, visible from
+    /// every list that references it.
+    BoardProgress(u32),
     /// `blist <list>` — show tasks in a named list.
     BoardList(String),
     /// `blists` — show the names of every list that currently exists.
     BoardLists,
+    /// `ball` — show every list, each with a header, in one go.
+    BoardAll,
     /// `bassign <id> <list>` — share an existing task into another list.
     BoardAssign(u32, String),
     /// `bunassign <id> <list>` — remove a task from one list, keeping it
@@ -139,6 +144,11 @@ fn parse_command(input: &str) -> Command {
             Err(_) => Command::InvalidArgument("bdone requires a numeric id".to_string()),
         },
 
+        "bprogress" => match argument.parse::<u32>() {
+            Ok(id) => Command::BoardProgress(id),
+            Err(_) => Command::InvalidArgument("bprogress requires a numeric id".to_string()),
+        },
+
         "blist" => {
             if argument.is_empty() {
                 Command::InvalidArgument("blist requires: <list>".to_string())
@@ -148,6 +158,7 @@ fn parse_command(input: &str) -> Command {
         }
 
         "blists" => Command::BoardLists,
+        "ball" => Command::BoardAll,
 
         "bassign" => {
             let mut sub = argument.splitn(2, ' ');
@@ -214,8 +225,19 @@ fn print_help() {
         "  {:<28} mark a board task done (all lists see it)",
         "bdone <id>".magenta()
     );
+    println!(
+        "  {:<28} mark a board task in progress (all lists see it)",
+        "bprogress <id>".magenta()
+    );
     println!("  {:<28} show every list's name", "blists".magenta());
-    println!("  {:<28} show tasks in a list", "blist <list>".magenta());
+    println!(
+        "  {:<28} show every list, with headers, in one go",
+        "ball".magenta()
+    );
+    println!(
+        "  {:<28} show tasks in a list (with header)",
+        "blist <list>".magenta()
+    );
     println!(
         "  {:<28} share an existing task into another list",
         "bassign <id> <list>".magenta()
@@ -242,6 +264,138 @@ fn print_help() {
     println!("  {:<28} save and exit", "quit".yellow());
 }
 
+/// Parses a formatted task line ("{id} {status_icon} {description}",
+/// as produced by `list_tasks`/`list_by_status`) back into its parts.
+/// Returns `None` for the special "No tasks" placeholder line.
+fn parse_task_line(line: &str) -> Option<(&str, &str, &str)> {
+    let mut parts = line.splitn(2, ' ');
+    let id = parts.next()?;
+    let rest = parts.next()?;
+    let mut rest_parts = rest.splitn(2, ' ');
+    let icon = rest_parts.next()?;
+    let desc = rest_parts.next().unwrap_or("");
+    if icon == "[]" || icon == "[~]" || icon == "[x]" {
+        Some((id, icon, desc))
+    } else {
+        None
+    }
+}
+
+/// Builds the colored, fixed-width "status cell" text for a task row:
+/// an icon plus a short word, colored by status. Width is padded
+/// *before* coloring (ANSI codes would otherwise throw off alignment).
+fn status_cell(icon: &str) -> colored::ColoredString {
+    let (label, width) = match icon {
+        "[x]" => ("[x] Done", 9),
+        "[~]" => ("[~] Doing", 9),
+        _ => ("[ ] Todo", 9),
+    };
+    let padded = format!("{:<width$}", label, width = width);
+    match icon {
+        "[x]" => padded.green(),
+        "[~]" => padded.bold().yellow(),
+        _ => padded.truecolor(150, 150, 150),
+    }
+}
+
+/// Styles a description based on task status: struck-through and
+/// dimmed for done, bold for in progress, plain for todo. Padded to
+/// `width` *before* styling, same reasoning as [`status_cell`].
+fn description_cell(desc: &str, icon: &str, width: usize) -> colored::ColoredString {
+    let padded = format!("{:<width$}", desc, width = width);
+    match icon {
+        "[x]" => padded.strikethrough().truecolor(120, 120, 120),
+        "[~]" => padded.bold(),
+        _ => padded.normal(),
+    }
+}
+
+/// Prints a bordered, column-aligned table of tasks, with an optional
+/// title header. Falls back to a friendly empty-state message if there
+/// are no real tasks to show.
+fn print_task_table(title: Option<&str>, lines: &[String]) {
+    let rows: Vec<(&str, &str, &str)> = lines.iter().filter_map(|l| parse_task_line(l)).collect();
+
+    if let Some(t) = title {
+        println!("\n{}", format!("╭─ {} ({}) ", t, rows.len()).bold().cyan());
+    }
+
+    if rows.is_empty() {
+        println!("  {}", "(no tasks)".truecolor(120, 120, 120).italic());
+        return;
+    }
+
+    let id_width = rows
+        .iter()
+        .map(|(id, _, _)| id.len())
+        .max()
+        .unwrap_or(2)
+        .max(2);
+    let status_width = 9; // fixed width used by status_cell
+    let desc_width = rows
+        .iter()
+        .map(|(_, _, desc)| desc.len())
+        .max()
+        .unwrap_or(11)
+        .max(11);
+
+    let top = format!(
+        "╭─{}─┬─{}─┬─{}─╮",
+        "─".repeat(id_width),
+        "─".repeat(status_width),
+        "─".repeat(desc_width)
+    );
+    let sep = format!(
+        "├─{}─┼─{}─┼─{}─┤",
+        "─".repeat(id_width),
+        "─".repeat(status_width),
+        "─".repeat(desc_width)
+    );
+    let bottom = format!(
+        "╰─{}─┴─{}─┴─{}─╯",
+        "─".repeat(id_width),
+        "─".repeat(status_width),
+        "─".repeat(desc_width)
+    );
+
+    let border = |s: &str| s.truecolor(90, 90, 90);
+
+    println!("{}", border(&top));
+    println!(
+        "{} {} {} {} {} {} {}",
+        border("│"),
+        format!("{:<id_width$}", "ID", id_width = id_width).bold(),
+        border("│"),
+        format!("{:<status_width$}", "Status", status_width = status_width).bold(),
+        border("│"),
+        format!("{:<desc_width$}", "Description", desc_width = desc_width).bold(),
+        border("│"),
+    );
+    println!("{}", border(&sep));
+
+    for (id, icon, desc) in rows {
+        println!(
+            "{} {} {} {} {} {} {}",
+            border("│"),
+            format!("{:<id_width$}", id, id_width = id_width),
+            border("│"),
+            status_cell(icon),
+            border("│"),
+            description_cell(desc, icon, desc_width),
+            border("│"),
+        );
+    }
+
+    println!("{}", border(&bottom));
+}
+
+/// Prints a named list's tasks as a table with a header showing the
+/// list name and task count.
+fn print_list_with_header(board: &Board, list_name: &str) {
+    let lines = board.list_tasks(list_name);
+    print_task_table(Some(list_name), &lines);
+}
+
 fn main() {
     let todos_path = data_dir().join("todos.json");
     let board_path = data_dir().join("board.json");
@@ -251,7 +405,21 @@ fn main() {
     let mut todo = TodoList::load_from_file(&todos_path).unwrap_or_else(|_| TodoList::new());
     let mut board = Board::load_from_file(&board_path).unwrap_or_else(|_| Board::new());
 
-    println!("{}", "Welcome to the Rust Todo List!".bold().green());
+    let banner_width = 34;
+    println!("{}", format!("╭{}╮", "─".repeat(banner_width)).cyan());
+    println!(
+        "{}  {}  {}",
+        "│".cyan(),
+        format!(
+            "{:^width$}",
+            "🦀 RUST TODO CLI 🦀",
+            width = banner_width - 2
+        )
+        .bold()
+        .green(),
+        "│".cyan()
+    );
+    println!("{}", format!("╰{}╯", "─".repeat(banner_width)).cyan());
     println!("Type {} for the list of commands.", "help".yellow());
 
     loop {
@@ -286,18 +454,11 @@ fn main() {
             },
             Command::List => {
                 let lines = todo.list_tasks();
-                TodoList::print_lines(lines);
+                print_task_table(Some("All tasks"), &lines);
             }
             Command::Filter(status) => {
                 let lines = todo.list_by_status(status);
-                if lines.is_empty() {
-                    println!(
-                        "{}",
-                        format!("No tasks found with status '{}'.", status).yellow()
-                    );
-                } else {
-                    TodoList::print_lines(lines);
-                }
+                print_task_table(Some(&format!("Filter: {}", status)), &lines);
             }
             Command::Help => print_help(),
             Command::Quit => {
@@ -336,12 +497,24 @@ fn main() {
                 ),
                 Err(e) => println!("{}", format!("Error: {}.", e).red()),
             },
+            Command::BoardProgress(id) => match board.set_in_progress(id) {
+                Ok(()) => println!(
+                    "{}",
+                    format!("Task {} marked as in progress (all lists).", id).green()
+                ),
+                Err(e) => println!("{}", format!("Error: {}.", e).red()),
+            },
             Command::BoardList(list_name) => {
-                let lines = board.list_tasks(&list_name);
-                if lines.is_empty() {
-                    println!("{}", format!("No tasks in list '{}'.", list_name).yellow());
+                print_list_with_header(&board, &list_name);
+            }
+            Command::BoardAll => {
+                let names = board.list_names();
+                if names.is_empty() {
+                    println!("{}", "No lists yet.".yellow());
                 } else {
-                    TodoList::print_lines(lines);
+                    for name in names {
+                        print_list_with_header(&board, &name);
+                    }
                 }
             }
             Command::BoardLists => {
