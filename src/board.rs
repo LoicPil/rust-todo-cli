@@ -11,7 +11,7 @@ use std::fs;
 use std::io;
 use std::rc::Rc;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::task::{Status, Task};
 use crate::todo_list::TodoError;
@@ -58,7 +58,9 @@ impl Board {
 
     /// Creates a new empty named list if one doesn't already exist.
     pub fn create_list(&mut self, name: &str) {
-        self.lists.entry(name.to_string()).or_insert_with(HashSet::new);
+        self.lists
+            .entry(name.to_string())
+            .or_insert_with(HashSet::new);
     }
 
     /// Adds a brand-new task to the central registry and to the given
@@ -107,7 +109,10 @@ impl Board {
     ///
     /// Returns [`TodoError::TaskNotFound`] if `task_id` doesn't exist.
     pub fn complete_task(&mut self, task_id: u32) -> Result<(), TodoError> {
-        let shared = self.tasks.get(&task_id).ok_or(TodoError::TaskNotFound(task_id))?;
+        let shared = self
+            .tasks
+            .get(&task_id)
+            .ok_or(TodoError::TaskNotFound(task_id))?;
         // borrow_mut() gives us temporary mutable access to the Task
         // inside the RefCell. It ends automatically when `task` goes
         // out of scope at the end of this block.
@@ -148,6 +153,14 @@ impl Board {
             .filter(|(_, ids)| ids.contains(&task_id))
             .map(|(name, _)| name.clone())
             .collect()
+    }
+
+    /// Returns the names of every list that currently exists (whether
+    /// empty or not), sorted alphabetically.
+    pub fn list_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.lists.keys().cloned().collect();
+        names.sort();
+        names
     }
 
     /// Serializes the board to pretty-printed JSON and writes it to
@@ -222,7 +235,10 @@ mod tests {
     fn test_add_task_creates_list_and_task() {
         let mut board = Board::new();
         let id = board.add_task("Work", "Write report".to_string());
-        assert_eq!(board.list_tasks("Work"), vec![format!("{} [] Write report", id)]);
+        assert_eq!(
+            board.list_tasks("Work"),
+            vec![format!("{} [] Write report", id)]
+        );
     }
 
     #[test]
@@ -267,6 +283,23 @@ mod tests {
     fn test_load_missing_file_returns_empty_board() {
         let board = Board::load_from_file("does_not_exist_board.json").unwrap();
         assert_eq!(board.list_tasks("Work"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_list_names() {
+        let mut board = Board::new();
+        board.add_task("Work", "Task A".to_string());
+        board.add_task("Personal", "Task B".to_string());
+        board.create_list("Empty list");
+
+        assert_eq!(
+            board.list_names(),
+            vec![
+                "Empty list".to_string(),
+                "Personal".to_string(),
+                "Work".to_string()
+            ]
+        );
     }
 
     #[test]

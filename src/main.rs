@@ -51,6 +51,8 @@ enum Command {
     BoardDone(u32),
     /// `blist <list>` — show tasks in a named list.
     BoardList(String),
+    /// `blists` — show the names of every list that currently exists.
+    BoardLists,
     /// `bassign <id> <list>` — share an existing task into another list.
     BoardAssign(u32, String),
     /// `bwhere <id>` — show which lists reference a given task id.
@@ -117,6 +119,8 @@ fn parse_command(input: &str) -> Command {
             }
         }
 
+        "blists" => Command::BoardLists,
+
         "bassign" => {
             let mut sub = argument.splitn(2, ' ');
             let id_str = sub.next().unwrap_or("").trim();
@@ -154,7 +158,7 @@ fn main() {
             "\nCommands: add <desc> | done <id> | remove <id> | progress <id> | list | filter <todo|done|inprogress> | quit"
         );
         println!(
-            "Board commands: badd <list> <desc> | bdone <id> | blist <list> | bassign <id> <list> | bwhere <id>"
+            "Board commands: badd <list> <desc> | bdone <id> | blists | blist <list> | bassign <id> <list> | bwhere <id>"
         );
         print!("> ");
         std::io::stdout().flush().unwrap();
@@ -224,6 +228,14 @@ fn main() {
                     println!("No tasks in list '{}'.", list_name);
                 } else {
                     TodoList::print_lines(lines);
+                }
+            }
+            Command::BoardLists => {
+                let names = board.list_names();
+                if names.is_empty() {
+                    println!("No lists yet.");
+                } else {
+                    println!("Lists ({}): {}", names.len(), names.join(", "));
                 }
             }
             Command::BoardAssign(id, list_name) => {
