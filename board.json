@@ -1,5 +1,14 @@
 {
-  "tasks": {},
-  "lists": {},
-  "next_id": 1
+  "tasks": {
+    "1": {
+      "description": "premier",
+      "status": "Todo"
+    }
+  },
+  "lists": {
+    "Work": [
+      1
+    ]
+  },
+  "next_id": 2
 }

@@ -155,6 +155,54 @@ impl Board {
             .collect()
     }
 
+    /// Removes a task from one named list, without deleting the task
+    /// itself from the registry — it may still be referenced by other
+    /// lists. If this was the *last* list referencing the task, the
+    /// task is also removed from the central registry entirely (nothing
+    /// would be able to reach it anymore otherwise).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TodoError::TaskNotFound`] if `list_name` doesn't exist
+    /// or doesn't contain `task_id`.
+    pub fn remove_from_list(&mut self, task_id: u32, list_name: &str) -> Result<(), TodoError> {
+        let removed = self
+            .lists
+            .get_mut(list_name)
+            .map(|ids| ids.remove(&task_id))
+            .unwrap_or(false);
+
+        if !removed {
+            return Err(TodoError::TaskNotFound(task_id));
+        }
+
+        // If no list references this task anymore, drop it from the
+        // registry too — otherwise it would linger forever, unreachable
+        // by any list but still taking up space.
+        let still_referenced = self.lists.values().any(|ids| ids.contains(&task_id));
+        if !still_referenced {
+            self.tasks.remove(&task_id);
+        }
+
+        Ok(())
+    }
+
+    /// Removes a task entirely: from every list that references it and
+    /// from the central registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TodoError::TaskNotFound`] if `task_id` doesn't exist.
+    pub fn remove_task(&mut self, task_id: u32) -> Result<(), TodoError> {
+        if self.tasks.remove(&task_id).is_none() {
+            return Err(TodoError::TaskNotFound(task_id));
+        }
+        for ids in self.lists.values_mut() {
+            ids.remove(&task_id);
+        }
+        Ok(())
+    }
+
     /// Returns the names of every list that currently exists (whether
     /// empty or not), sorted alphabetically.
     pub fn list_names(&self) -> Vec<String> {
@@ -283,6 +331,52 @@ mod tests {
     fn test_load_missing_file_returns_empty_board() {
         let board = Board::load_from_file("does_not_exist_board.json").unwrap();
         assert_eq!(board.list_tasks("Work"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_remove_from_list_keeps_task_if_still_shared() {
+        let mut board = Board::new();
+        let id = board.add_task("Work", "Shared task".to_string());
+        board.assign_task_to_list(id, "Personal").unwrap();
+
+        board.remove_from_list(id, "Work").unwrap();
+
+        assert_eq!(board.list_tasks("Work").len(), 0);
+        assert_eq!(board.list_tasks("Personal").len(), 1);
+    }
+
+    #[test]
+    fn test_remove_from_list_drops_task_when_last_reference() {
+        let mut board = Board::new();
+        let id = board.add_task("Work", "Solo task".to_string());
+
+        board.remove_from_list(id, "Work").unwrap();
+
+        // No list references it anymore, so complete_task should now
+        // report it as not found.
+        assert_eq!(board.complete_task(id), Err(TodoError::TaskNotFound(id)));
+    }
+
+    #[test]
+    fn test_remove_from_list_not_found() {
+        let mut board = Board::new();
+        let id = board.add_task("Work", "Task".to_string());
+        assert_eq!(
+            board.remove_from_list(id, "Personal"),
+            Err(TodoError::TaskNotFound(id))
+        );
+    }
+
+    #[test]
+    fn test_remove_task_deletes_everywhere() {
+        let mut board = Board::new();
+        let id = board.add_task("Work", "Shared task".to_string());
+        board.assign_task_to_list(id, "Personal").unwrap();
+
+        board.remove_task(id).unwrap();
+
+        assert_eq!(board.list_tasks("Work").len(), 0);
+        assert_eq!(board.list_tasks("Personal").len(), 0);
     }
 
     #[test]
