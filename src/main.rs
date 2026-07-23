@@ -10,16 +10,23 @@ mod todo_list;
 
 use crate::board::Board;
 use crate::task::Status;
-use crate::todo_list::TodoError;
 use crate::todo_list::TodoList;
 use colored::Colorize;
 use std::io;
 use std::io::Write;
+use std::path::PathBuf;
 
-/// Path to the JSON file used to persist the todo list between runs.
-const SAVE_PATH: &str = "todos.json";
-/// Path to the JSON file used to persist the multi-list board between runs.
-const BOARD_SAVE_PATH: &str = "board.json";
+/// Returns the directory used to store this app's data files
+/// (`~/.todo_cli` on Linux/macOS), creating it if it doesn't exist yet.
+///
+/// Falls back to the current directory if `HOME` isn't set, so the
+/// program still runs (just without the "works from anywhere" benefit).
+fn data_dir() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let dir = PathBuf::from(home).join(".todo_cli");
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
 
 /// A parsed user command, produced by [`parse_command`] from a line of
 /// raw input.
@@ -65,6 +72,8 @@ enum Command {
     BoardUnassign(u32, String),
     /// `bremove <id>` — remove a task entirely, from every list.
     BoardRemove(u32),
+    /// `bdelete <list>` — delete an entire list (unassigning its tasks first).
+    BoardDeleteList(String),
     /// `bwhere <id>` — show which lists reference a given task id.
     BoardWhere(u32),
 }
@@ -165,6 +174,14 @@ fn parse_command(input: &str) -> Command {
             Err(_) => Command::InvalidArgument("bremove requires a numeric id".to_string()),
         },
 
+        "bdelete" => {
+            if argument.is_empty() {
+                Command::InvalidArgument("bdelete requires: <list>".to_string())
+            } else {
+                Command::BoardDeleteList(argument.to_string())
+            }
+        }
+
         "bwhere" => match argument.parse::<u32>() {
             Ok(id) => Command::BoardWhere(id),
             Err(_) => Command::InvalidArgument("bwhere requires a numeric id".to_string()),
@@ -212,6 +229,10 @@ fn print_help() {
         "bremove <id>".magenta()
     );
     println!(
+        "  {:<28} delete a whole list (unassigns its tasks first)",
+        "bdelete <list>".magenta()
+    );
+    println!(
         "  {:<28} show which lists contain a task",
         "bwhere <id>".magenta()
     );
@@ -222,8 +243,13 @@ fn print_help() {
 }
 
 fn main() {
-    let mut todo = TodoList::load_from_file(SAVE_PATH).unwrap_or_else(|_| TodoList::new());
-    let mut board = Board::load_from_file(BOARD_SAVE_PATH).unwrap_or_else(|_| Board::new());
+    let todos_path = data_dir().join("todos.json");
+    let board_path = data_dir().join("board.json");
+    let todos_path = todos_path.to_string_lossy().to_string();
+    let board_path = board_path.to_string_lossy().to_string();
+
+    let mut todo = TodoList::load_from_file(&todos_path).unwrap_or_else(|_| TodoList::new());
+    let mut board = Board::load_from_file(&board_path).unwrap_or_else(|_| Board::new());
 
     println!("{}", "Welcome to the Rust Todo List!".bold().green());
     println!("Type {} for the list of commands.", "help".yellow());
@@ -248,21 +274,15 @@ fn main() {
             }
             Command::Done(id) => match todo.complete_task(id) {
                 Ok(()) => println!("{}", format!("Task {} marked as done.", id).green()),
-                Err(TodoError::TaskNotFound(id)) => {
-                    println!("{}", format!("Error: task {} not found.", id).red())
-                }
+                Err(e) => println!("{}", format!("Error: {}.", e).red()),
             },
             Command::Remove(id) => match todo.remove_task(id) {
                 Ok(()) => println!("{}", format!("Task {} removed.", id).green()),
-                Err(TodoError::TaskNotFound(id)) => {
-                    println!("{}", format!("Error: task {} not found.", id).red())
-                }
+                Err(e) => println!("{}", format!("Error: {}.", e).red()),
             },
             Command::Progress(id) => match todo.set_in_progress(id) {
                 Ok(()) => println!("{}", format!("Task {} marked as in progress.", id).green()),
-                Err(TodoError::TaskNotFound(id)) => {
-                    println!("{}", format!("Error: task {} not found.", id).red())
-                }
+                Err(e) => println!("{}", format!("Error: {}.", e).red()),
             },
             Command::List => {
                 let lines = todo.list_tasks();
@@ -281,10 +301,10 @@ fn main() {
             }
             Command::Help => print_help(),
             Command::Quit => {
-                if let Err(e) = todo.save_to_file(SAVE_PATH) {
+                if let Err(e) = todo.save_to_file(&todos_path) {
                     println!("{}", format!("Warning: failed to save tasks: {}", e).red());
                 }
-                if let Err(e) = board.save_to_file(BOARD_SAVE_PATH) {
+                if let Err(e) = board.save_to_file(&board_path) {
                     println!("{}", format!("Warning: failed to save board: {}", e).red());
                 }
                 println!("{}", "Goodbye!".bold().green());
@@ -314,9 +334,7 @@ fn main() {
                     "{}",
                     format!("Task {} marked as done (all lists).", id).green()
                 ),
-                Err(TodoError::TaskNotFound(id)) => {
-                    println!("{}", format!("Error: task {} not found.", id).red())
-                }
+                Err(e) => println!("{}", format!("Error: {}.", e).red()),
             },
             Command::BoardList(list_name) => {
                 let lines = board.list_tasks(&list_name);
@@ -343,9 +361,7 @@ fn main() {
                         "{}",
                         format!("Task {} shared into list '{}'.", id, list_name).green()
                     ),
-                    Err(TodoError::TaskNotFound(id)) => {
-                        println!("{}", format!("Error: task {} not found.", id).red())
-                    }
+                    Err(e) => println!("{}", format!("Error: {}.", e).red()),
                 }
             }
             Command::BoardUnassign(id, list_name) => match board.remove_from_list(id, &list_name) {
@@ -353,19 +369,25 @@ fn main() {
                     "{}",
                     format!("Task {} removed from list '{}'.", id, list_name).green()
                 ),
-                Err(TodoError::TaskNotFound(id)) => println!(
-                    "{}",
-                    format!("Error: task {} not found in list '{}'.", id, list_name).red()
-                ),
+                Err(e) => println!("{}", format!("Error: {}.", e).red()),
             },
             Command::BoardRemove(id) => match board.remove_task(id) {
                 Ok(()) => println!(
                     "{}",
                     format!("Task {} removed entirely (all lists).", id).green()
                 ),
-                Err(TodoError::TaskNotFound(id)) => {
-                    println!("{}", format!("Error: task {} not found.", id).red())
-                }
+                Err(e) => println!("{}", format!("Error: {}.", e).red()),
+            },
+            Command::BoardDeleteList(list_name) => match board.delete_list(&list_name) {
+                Ok(()) => println!(
+                    "{}",
+                    format!(
+                        "List '{}' deleted (its tasks were unassigned from it).",
+                        list_name
+                    )
+                    .green()
+                ),
+                Err(e) => println!("{}", format!("Error: {}.", e).red()),
             },
             Command::BoardWhere(id) => {
                 let lists = board.lists_containing(id);

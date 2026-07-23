@@ -8,11 +8,24 @@ use std::io;
 
 use crate::task::{Status, Task};
 
-/// Errors that can occur when operating on a [`TodoList`].
+use std::fmt;
+
+/// Errors that can occur when operating on a [`TodoList`] or [`crate::board::Board`].
 #[derive(PartialEq, Debug)]
 pub enum TodoError {
     /// No task exists with the given id.
     TaskNotFound(u32),
+    /// No list exists with the given name.
+    ListNotFound(String),
+}
+
+impl fmt::Display for TodoError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TodoError::TaskNotFound(id) => write!(f, "task {} not found", id),
+            TodoError::ListNotFound(name) => write!(f, "list '{}' not found", name),
+        }
+    }
 }
 
 /// An in-memory collection of tasks, keyed by an auto-incrementing `u32` id.

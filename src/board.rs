@@ -203,6 +203,34 @@ impl Board {
         Ok(())
     }
 
+    /// Deletes a named list entirely.
+    ///
+    /// Every task in the list is first unassigned from it (reusing
+    /// [`Board::remove_from_list`]'s logic: a task is dropped from the
+    /// central registry too if this was the last list referencing it).
+    /// The list itself is then removed, whether it was empty or not.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TodoError::ListNotFound`] if no list with that name exists.
+    pub fn delete_list(&mut self, list_name: &str) -> Result<(), TodoError> {
+        let ids: Vec<u32> = self
+            .lists
+            .get(list_name)
+            .ok_or_else(|| TodoError::ListNotFound(list_name.to_string()))?
+            .iter()
+            .cloned()
+            .collect();
+
+        for id in ids {
+            // Each id is known to be in this list, so this can't fail.
+            let _ = self.remove_from_list(id, list_name);
+        }
+
+        self.lists.remove(list_name);
+        Ok(())
+    }
+
     /// Returns the names of every list that currently exists (whether
     /// empty or not), sorted alphabetically.
     pub fn list_names(&self) -> Vec<String> {
@@ -331,6 +359,43 @@ mod tests {
     fn test_load_missing_file_returns_empty_board() {
         let board = Board::load_from_file("does_not_exist_board.json").unwrap();
         assert_eq!(board.list_tasks("Work"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_delete_list_unassigns_and_removes() {
+        let mut board = Board::new();
+        let shared_id = board.add_task("Work", "Shared task".to_string());
+        board.assign_task_to_list(shared_id, "Personal").unwrap();
+        let solo_id = board.add_task("Work", "Solo task".to_string());
+
+        board.delete_list("Work").unwrap();
+
+        // The list itself is gone.
+        assert!(!board.list_names().contains(&"Work".to_string()));
+        // The shared task survives in Personal.
+        assert_eq!(board.list_tasks("Personal").len(), 1);
+        // The solo task, no longer referenced anywhere, is gone entirely.
+        assert_eq!(
+            board.complete_task(solo_id),
+            Err(TodoError::TaskNotFound(solo_id))
+        );
+    }
+
+    #[test]
+    fn test_delete_list_not_found() {
+        let mut board = Board::new();
+        assert_eq!(
+            board.delete_list("Nonexistent"),
+            Err(TodoError::ListNotFound("Nonexistent".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_delete_empty_list() {
+        let mut board = Board::new();
+        board.create_list("Empty");
+        assert!(board.delete_list("Empty").is_ok());
+        assert!(!board.list_names().contains(&"Empty".to_string()));
     }
 
     #[test]
