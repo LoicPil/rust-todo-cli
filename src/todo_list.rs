@@ -82,13 +82,20 @@ impl TodoList {
     /// Returns [`TodoError::TaskNotFound`] if no task with that id exists.
     pub fn remove_task(&mut self, id: u32) -> Result<(), TodoError> {
         self.tasks.remove(&id).ok_or(TodoError::TaskNotFound(id))?;
-        // If the list is now completely empty, restart id numbering at 1
-        // instead of leaving next_id wherever it happened to be — no
-        // collision risk once there's nothing left to collide with.
-        if self.tasks.is_empty() {
-            self.next_id = 1;
-        }
+        self.shrink_next_id();
         Ok(())
+    }
+
+    /// Walks `next_id` back down over any trailing ids that are no
+    /// longer in use, so that removing the most recently created task
+    /// (or several in a row) makes the next `add_task` reuse that id
+    /// instead of skipping ahead. Stops as soon as it hits an id that's
+    /// still occupied — never reclaims an id out from under a task that
+    /// still exists.
+    fn shrink_next_id(&mut self) {
+        while self.next_id > 1 && !self.tasks.contains_key(&(self.next_id - 1)) {
+            self.next_id -= 1;
+        }
     }
 
     /// Marks the task with the given id as [`Status::Done`].
@@ -255,6 +262,30 @@ mod tests {
         // not 2.
         list.add_task("Second".to_string());
         assert_eq!(list.list_tasks(), vec!["1 [] Second".to_string()]);
+    }
+
+    #[test]
+    fn test_id_shrinks_back_when_removing_most_recent_task() {
+        let mut list = TodoList::new();
+        list.add_task("A".to_string()); // id 1
+        list.add_task("B".to_string()); // id 2
+        list.remove_task(2).unwrap(); // remove the most recently created one
+        list.add_task("C".to_string()); // should reuse id 2, not become 3
+        let lines = list.list_tasks();
+        assert!(lines.contains(&"1 [] A".to_string()));
+        assert!(lines.contains(&"2 [] C".to_string()));
+    }
+
+    #[test]
+    fn test_id_does_not_shrink_when_removing_a_non_trailing_task() {
+        let mut list = TodoList::new();
+        list.add_task("A".to_string()); // id 1
+        list.add_task("B".to_string()); // id 2
+        list.remove_task(1).unwrap(); // remove the OLDER one, not the last
+        list.add_task("C".to_string()); // id 2 is still taken by B, so this is id 3
+        let lines = list.list_tasks();
+        assert!(lines.contains(&"2 [] B".to_string()));
+        assert!(lines.contains(&"3 [] C".to_string()));
     }
 
     #[test]

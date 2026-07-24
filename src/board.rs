@@ -209,9 +209,7 @@ impl Board {
         let still_referenced = self.lists.values().any(|ids| ids.contains(&task_id));
         if !still_referenced {
             self.tasks.remove(&task_id);
-            if self.tasks.is_empty() {
-                self.next_id = 1;
-            }
+            self.shrink_next_id();
         }
 
         Ok(())
@@ -230,12 +228,19 @@ impl Board {
         for ids in self.lists.values_mut() {
             ids.remove(&task_id);
         }
-        // Same reasoning as TodoList::remove_task: no collision risk
-        // once the whole registry is empty, so restart numbering at 1.
-        if self.tasks.is_empty() {
-            self.next_id = 1;
-        }
+        self.shrink_next_id();
         Ok(())
+    }
+
+    /// Walks `next_id` back down over any trailing ids that are no
+    /// longer in use anywhere on the board, so removing the most
+    /// recently created task lets the next one reuse its id. Same
+    /// reasoning as [`crate::todo_list::TodoList`]'s version: never
+    /// reclaims an id that's still occupied.
+    fn shrink_next_id(&mut self) {
+        while self.next_id > 1 && !self.tasks.contains_key(&(self.next_id - 1)) {
+            self.next_id -= 1;
+        }
     }
 
     /// Deletes a named list entirely.
@@ -384,6 +389,26 @@ mod tests {
         // Registry is now empty; the next task should get id 1 again.
         let new_id = board.add_task("Work", "Second".to_string());
         assert_eq!(new_id, 1);
+    }
+
+    #[test]
+    fn test_id_shrinks_back_when_removing_most_recent_task() {
+        let mut board = Board::new();
+        board.add_task("Work", "A".to_string()); // id 1
+        let id_b = board.add_task("Work", "B".to_string()); // id 2
+        board.remove_task(id_b).unwrap();
+        let id_c = board.add_task("Work", "C".to_string());
+        assert_eq!(id_c, id_b); // reused, not id 3
+    }
+
+    #[test]
+    fn test_id_does_not_shrink_when_removing_a_non_trailing_task() {
+        let mut board = Board::new();
+        let id_a = board.add_task("Work", "A".to_string()); // id 1
+        board.add_task("Work", "B".to_string()); // id 2
+        board.remove_task(id_a).unwrap(); // remove the OLDER one
+        let id_c = board.add_task("Work", "C".to_string());
+        assert_eq!(id_c, 3); // id 2 (B) is still in use, so this is 3
     }
 
     #[test]
