@@ -1,10 +1,10 @@
 //! Storage and operations on the collection of tasks: [`TodoList`] and
 //! its error type [`TodoError`].
 
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io;
+use serde::{Serialize, Deserialize};
 
 use crate::task::{Status, Task};
 
@@ -64,6 +64,17 @@ impl TodoList {
         self.next_id += 1;
     }
 
+    /// Returns a reference to the task with the given id, if it exists.
+    /// Used to read a task's data (e.g. before migrating it elsewhere)
+    /// without removing it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TodoError::TaskNotFound`] if no task with that id exists.
+    pub fn get_task(&self, id: u32) -> Result<&Task, TodoError> {
+        self.tasks.get(&id).ok_or(TodoError::TaskNotFound(id))
+    }
+
     /// Removes the task with the given id.
     ///
     /// # Errors
@@ -71,6 +82,12 @@ impl TodoList {
     /// Returns [`TodoError::TaskNotFound`] if no task with that id exists.
     pub fn remove_task(&mut self, id: u32) -> Result<(), TodoError> {
         self.tasks.remove(&id).ok_or(TodoError::TaskNotFound(id))?;
+        // If the list is now completely empty, restart id numbering at 1
+        // instead of leaving next_id wherever it happened to be — no
+        // collision risk once there's nothing left to collide with.
+        if self.tasks.is_empty() {
+            self.next_id = 1;
+        }
         Ok(())
     }
 
@@ -227,6 +244,17 @@ mod tests {
         list.complete_task(1).unwrap();
         assert_eq!(list.list_by_status(Status::Done).len(), 1);
         assert_eq!(list.list_by_status(Status::Todo).len(), 1);
+    }
+
+    #[test]
+    fn test_id_restarts_at_1_when_list_emptied() {
+        let mut list = TodoList::new();
+        list.add_task("First".to_string());
+        list.remove_task(1).unwrap();
+        // List is now empty; the next task added should get id 1 again,
+        // not 2.
+        list.add_task("Second".to_string());
+        assert_eq!(list.list_tasks(), vec!["1 [] Second".to_string()]);
     }
 
     #[test]

@@ -52,6 +52,10 @@ enum Command {
     /// The command was recognized but its argument was missing or invalid.
     InvalidArgument(String),
 
+    /// `bimport <id> <list>` — move a task from the base list into a
+    /// named board list, preserving its status.
+    ImportToBoard(u32, String),
+
     // --- Board (Chapter 15) commands ---
     /// `bcreate <list>` — create an empty named list.
     BoardCreate(String),
@@ -117,6 +121,16 @@ fn parse_command(input: &str) -> Command {
         "list" => Command::List,
         "quit" => Command::Quit,
         "help" | "?" => Command::Help,
+
+        "bimport" => {
+            let mut sub = argument.splitn(2, ' ');
+            let id_str = sub.next().unwrap_or("").trim();
+            let list_name = sub.next().unwrap_or("").trim();
+            match (id_str.parse::<u32>(), list_name.is_empty()) {
+                (Ok(id), false) => Command::ImportToBoard(id, list_name.to_string()),
+                _ => Command::InvalidArgument("bimport requires: <id> <list>".to_string()),
+            }
+        }
 
         "bcreate" => {
             if argument.is_empty() {
@@ -216,6 +230,10 @@ fn print_help() {
     );
 
     println!("\n{}", "── Multi-list board ──".bold());
+    println!(
+        "  {:<28} move a task from the base list into a board list",
+        "bimport <id> <list>".magenta()
+    );
     println!("  {:<28} create an empty list", "bcreate <list>".magenta());
     println!(
         "  {:<28} add a task directly into a list",
@@ -234,10 +252,7 @@ fn print_help() {
         "  {:<28} show every list, with headers, in one go",
         "ball".magenta()
     );
-    println!(
-        "  {:<28} show tasks in a list (with header)",
-        "blist <list>".magenta()
-    );
+    println!("  {:<28} show tasks in a list (with header)", "blist <list>".magenta());
     println!(
         "  {:<28} share an existing task into another list",
         "bassign <id> <list>".magenta()
@@ -314,10 +329,16 @@ fn description_cell(desc: &str, icon: &str, width: usize) -> colored::ColoredStr
 /// title header. Falls back to a friendly empty-state message if there
 /// are no real tasks to show.
 fn print_task_table(title: Option<&str>, lines: &[String]) {
-    let rows: Vec<(&str, &str, &str)> = lines.iter().filter_map(|l| parse_task_line(l)).collect();
+    let rows: Vec<(&str, &str, &str)> = lines
+        .iter()
+        .filter_map(|l| parse_task_line(l))
+        .collect();
 
     if let Some(t) = title {
-        println!("\n{}", format!("╭─ {} ({}) ", t, rows.len()).bold().cyan());
+        println!(
+            "\n{}",
+            format!("╭─ {} ({}) ", t, rows.len()).bold().cyan()
+        );
     }
 
     if rows.is_empty() {
@@ -325,12 +346,7 @@ fn print_task_table(title: Option<&str>, lines: &[String]) {
         return;
     }
 
-    let id_width = rows
-        .iter()
-        .map(|(id, _, _)| id.len())
-        .max()
-        .unwrap_or(2)
-        .max(2);
+    let id_width = rows.iter().map(|(id, _, _)| id.len()).max().unwrap_or(2).max(2);
     let status_width = 9; // fixed width used by status_cell
     let desc_width = rows
         .iter()
@@ -406,20 +422,22 @@ fn main() {
     let mut board = Board::load_from_file(&board_path).unwrap_or_else(|_| Board::new());
 
     let banner_width = 34;
-    println!("{}", format!("╭{}╮", "─".repeat(banner_width)).cyan());
+    println!(
+        "{}",
+        format!("╭{}╮", "─".repeat(banner_width)).cyan()
+    );
     println!(
         "{}  {}  {}",
         "│".cyan(),
-        format!(
-            "{:^width$}",
-            "🦀 RUST TODO CLI 🦀",
-            width = banner_width - 2
-        )
-        .bold()
-        .green(),
+        format!("{:^width$}", "🦀 RUST TODO CLI 🦀", width = banner_width - 2)
+            .bold()
+            .green(),
         "│".cyan()
     );
-    println!("{}", format!("╰{}╯", "─".repeat(banner_width)).cyan());
+    println!(
+        "{}",
+        format!("╰{}╯", "─".repeat(banner_width)).cyan()
+    );
     println!("Type {} for the list of commands.", "help".yellow());
 
     loop {
@@ -479,6 +497,25 @@ fn main() {
                 println!("{}", format!("Invalid argument: {}.", msg).red())
             }
 
+            Command::ImportToBoard(id, list_name) => {
+                match todo.get_task(id).map(|t| t.clone()) {
+                    Ok(task) => {
+                        let new_id = board.add_existing_task(&list_name, task);
+                        // Safe to unwrap: we just confirmed the id exists above.
+                        let _ = todo.remove_task(id);
+                        println!(
+                            "{}",
+                            format!(
+                                "Task {} moved from the base list into '{}' (new id: {}).",
+                                id, list_name, new_id
+                            )
+                            .green()
+                        );
+                    }
+                    Err(e) => println!("{}", format!("Error: {}.", e).red()),
+                }
+            }
+
             Command::BoardCreate(list_name) => {
                 board.create_list(&list_name);
                 println!("{}", format!("List '{}' created.", list_name).green());
@@ -528,15 +565,13 @@ fn main() {
                     );
                 }
             }
-            Command::BoardAssign(id, list_name) => {
-                match board.assign_task_to_list(id, &list_name) {
-                    Ok(()) => println!(
-                        "{}",
-                        format!("Task {} shared into list '{}'.", id, list_name).green()
-                    ),
-                    Err(e) => println!("{}", format!("Error: {}.", e).red()),
-                }
-            }
+            Command::BoardAssign(id, list_name) => match board.assign_task_to_list(id, &list_name) {
+                Ok(()) => println!(
+                    "{}",
+                    format!("Task {} shared into list '{}'.", id, list_name).green()
+                ),
+                Err(e) => println!("{}", format!("Error: {}.", e).red()),
+            },
             Command::BoardUnassign(id, list_name) => match board.remove_from_list(id, &list_name) {
                 Ok(()) => println!(
                     "{}",

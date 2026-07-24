@@ -11,7 +11,7 @@ use std::fs;
 use std::io;
 use std::rc::Rc;
 
-use serde::{Deserialize, Serialize};
+use serde::{Serialize, Deserialize};
 
 use crate::task::{Status, Task};
 use crate::todo_list::TodoError;
@@ -58,9 +58,7 @@ impl Board {
 
     /// Creates a new empty named list if one doesn't already exist.
     pub fn create_list(&mut self, name: &str) {
-        self.lists
-            .entry(name.to_string())
-            .or_insert_with(HashSet::new);
+        self.lists.entry(name.to_string()).or_insert_with(HashSet::new);
     }
 
     /// Adds a brand-new task to the central registry and to the given
@@ -73,6 +71,25 @@ impl Board {
         let task = Rc::new(RefCell::new(Task::new(description)));
         self.tasks.insert(id, task);
 
+        self.lists
+            .entry(list_name.to_string())
+            .or_insert_with(HashSet::new)
+            .insert(id);
+
+        id
+    }
+
+    /// Adds an already-constructed [`Task`] directly into the registry
+    /// and the given list, preserving its current status (unlike
+    /// [`Board::add_task`], which always starts a task at
+    /// [`Status::Todo`]). Used to migrate a task from the single-list
+    /// [`crate::todo_list::TodoList`] into the board without losing its
+    /// progress. Returns the new id.
+    pub fn add_existing_task(&mut self, list_name: &str, task: Task) -> u32 {
+        let id = self.next_id;
+        self.next_id += 1;
+
+        self.tasks.insert(id, Rc::new(RefCell::new(task)));
         self.lists
             .entry(list_name.to_string())
             .or_insert_with(HashSet::new)
@@ -109,10 +126,7 @@ impl Board {
     ///
     /// Returns [`TodoError::TaskNotFound`] if `task_id` doesn't exist.
     pub fn complete_task(&mut self, task_id: u32) -> Result<(), TodoError> {
-        let shared = self
-            .tasks
-            .get(&task_id)
-            .ok_or(TodoError::TaskNotFound(task_id))?;
+        let shared = self.tasks.get(&task_id).ok_or(TodoError::TaskNotFound(task_id))?;
         // borrow_mut() gives us temporary mutable access to the Task
         // inside the RefCell. It ends automatically when `task` goes
         // out of scope at the end of this block.
@@ -128,10 +142,7 @@ impl Board {
     ///
     /// Returns [`TodoError::TaskNotFound`] if `task_id` doesn't exist.
     pub fn set_in_progress(&mut self, task_id: u32) -> Result<(), TodoError> {
-        let shared = self
-            .tasks
-            .get(&task_id)
-            .ok_or(TodoError::TaskNotFound(task_id))?;
+        let shared = self.tasks.get(&task_id).ok_or(TodoError::TaskNotFound(task_id))?;
         let mut task = shared.borrow_mut();
         task.status = Status::InProgress;
         Ok(())
@@ -198,6 +209,9 @@ impl Board {
         let still_referenced = self.lists.values().any(|ids| ids.contains(&task_id));
         if !still_referenced {
             self.tasks.remove(&task_id);
+            if self.tasks.is_empty() {
+                self.next_id = 1;
+            }
         }
 
         Ok(())
@@ -215,6 +229,11 @@ impl Board {
         }
         for ids in self.lists.values_mut() {
             ids.remove(&task_id);
+        }
+        // Same reasoning as TodoList::remove_task: no collision risk
+        // once the whole registry is empty, so restart numbering at 1.
+        if self.tasks.is_empty() {
+            self.next_id = 1;
         }
         Ok(())
     }
@@ -335,10 +354,7 @@ mod tests {
     fn test_add_task_creates_list_and_task() {
         let mut board = Board::new();
         let id = board.add_task("Work", "Write report".to_string());
-        assert_eq!(
-            board.list_tasks("Work"),
-            vec![format!("{} [] Write report", id)]
-        );
+        assert_eq!(board.list_tasks("Work"), vec![format!("{} [] Write report", id)]);
     }
 
     #[test]
@@ -358,6 +374,16 @@ mod tests {
     fn test_complete_task_not_found() {
         let mut board = Board::new();
         assert_eq!(board.complete_task(99), Err(TodoError::TaskNotFound(99)));
+    }
+
+    #[test]
+    fn test_id_restarts_at_1_when_registry_emptied() {
+        let mut board = Board::new();
+        let id = board.add_task("Work", "First".to_string());
+        board.remove_task(id).unwrap();
+        // Registry is now empty; the next task should get id 1 again.
+        let new_id = board.add_task("Work", "Second".to_string());
+        assert_eq!(new_id, 1);
     }
 
     #[test]
@@ -477,11 +503,7 @@ mod tests {
 
         assert_eq!(
             board.list_names(),
-            vec![
-                "Empty list".to_string(),
-                "Personal".to_string(),
-                "Work".to_string()
-            ]
+            vec!["Empty list".to_string(), "Personal".to_string(), "Work".to_string()]
         );
     }
 
